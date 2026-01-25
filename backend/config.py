@@ -6,8 +6,12 @@ class Settings(BaseSettings):
     supabase_url: str
     supabase_key: str
     
-    # Gemini API
+    # Gemini API (for text generation only)
     gemini_api_key: str
+    
+    # Embedding model settings
+    embedding_model: str = "all-MiniLM-L6-v2"
+    embedding_dimension: int = 384
     
     # Application
     app_name: str = "IEEE Paper Generator"

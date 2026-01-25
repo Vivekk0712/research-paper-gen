@@ -101,6 +101,9 @@ async def upload_files(paper_id: str, files: List[UploadFile] = File(...)):
             # Process file and extract text
             text, chunks = FileProcessor.process_file(str(file_path), file_ext)
             
+            # Initialize file processor for embeddings
+            file_processor = FileProcessor()
+            
             # Store file info in database
             file_result = supabase.table("files").insert({
                 "file_id": file_id,
@@ -113,7 +116,7 @@ async def upload_files(paper_id: str, files: List[UploadFile] = File(...)):
             
             # Store chunks with embeddings
             for i, chunk in enumerate(chunks):
-                embedding = FileProcessor.generate_embeddings(chunk)
+                embedding = file_processor.generate_embeddings(chunk)
                 supabase.table("document_chunks").insert({
                     "file_id": file_id,
                     "paper_id": paper_id,
@@ -175,7 +178,8 @@ async def generate_content(request: GenerationRequest):
         
         # Generate query embedding
         query = f"{request.section_name} {paper['title']} {paper['domain']}"
-        query_embedding = FileProcessor.generate_embeddings(query)
+        file_processor = FileProcessor()
+        query_embedding = file_processor.generate_embeddings(query)
         
         # Retrieve relevant chunks using vector similarity
         chunks_result = supabase.rpc("match_documents", {
@@ -190,8 +194,8 @@ async def generate_content(request: GenerationRequest):
         if chunks_result.data:
             context = "\n\n".join([chunk["content"] for chunk in chunks_result.data])
         
-        # Generate content using Gemini
-        model = genai.GenerativeModel('gemini-pro')
+        # Generate content using Gemini 2.5 Flash
+        model = genai.GenerativeModel('gemini-2.0-flash-exp')
         
         prompt = f"""
         You are an expert academic writer specializing in IEEE format papers.

@@ -5,12 +5,18 @@ from docx import Document
 from typing import List, Tuple
 import google.generativeai as genai
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from sentence_transformers import SentenceTransformer
+import numpy as np
 from config import get_settings
 
 settings = get_settings()
 
 class FileProcessor:
     """Process uploaded PDF and DOCX files"""
+    
+    def __init__(self):
+        # Initialize the sentence transformer model
+        self.embedding_model = SentenceTransformer(settings.embedding_model)
     
     @staticmethod
     def extract_text_from_pdf(file_path: str) -> str:
@@ -52,17 +58,13 @@ class FileProcessor:
         chunks = text_splitter.split_text(text)
         return chunks
     
-    @staticmethod
-    def generate_embeddings(text: str) -> List[float]:
-        """Generate embeddings using Gemini API"""
+    def generate_embeddings(self, text: str) -> List[float]:
+        """Generate embeddings using all-MiniLM-L6-v2 model"""
         try:
-            genai.configure(api_key=settings.gemini_api_key)
-            result = genai.embed_content(
-                model="models/embedding-001",
-                content=text,
-                task_type="retrieval_document"
-            )
-            return result['embedding']
+            # Generate embedding using sentence transformer
+            embedding = self.embedding_model.encode(text, convert_to_tensor=False)
+            # Convert to list and ensure it's the right type
+            return embedding.tolist() if hasattr(embedding, 'tolist') else list(embedding)
         except Exception as e:
             raise Exception(f"Error generating embeddings: {str(e)}")
     

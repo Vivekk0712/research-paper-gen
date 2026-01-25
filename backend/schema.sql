@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS document_chunks (
     file_id UUID REFERENCES files(file_id) ON DELETE CASCADE,
     paper_id UUID REFERENCES papers(paper_id) ON DELETE CASCADE,
     content TEXT NOT NULL,
-    embedding vector(768),
+    embedding vector(384),
     chunk_index INTEGER,
     metadata JSONB,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -77,7 +77,7 @@ CREATE TRIGGER update_sections_updated_at BEFORE UPDATE ON sections
 
 -- Function for vector similarity search
 CREATE OR REPLACE FUNCTION match_documents(
-    query_embedding vector(768),
+    query_embedding vector(384),
     match_threshold float,
     match_count int,
     paper_id uuid
