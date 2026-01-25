@@ -1,0 +1,110 @@
+# Development Docker Compose
+# Use this for development with hot reloading
+version: '3.8'
+
+services:
+  # PostgreSQL Database with pgvector
+  database:
+    image: pgvector/pgvector:pg15
+    container_name: ieee_paper_db_dev
+    environment:
+      POSTGRES_DB: ieee_papers_dev
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres123}
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ./backend/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    ports:
+      - "5433:5432"  # Different port to avoid conflicts
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ieee_papers_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - ieee_dev_network
+
+  # Backend API (Development mode with hot reload)
+  backend-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+      target: development
+    container_name: ieee_paper_backend_dev
+    environment:
+      # Database connection
+      SUPABASE_URL: postgresql://postgres:${DB_PASSWORD:-postgres123}@database:5432/ieee_papers_dev
+      SUPABASE_KEY: ${SUPABASE_KEY}
+      
+      # AI API
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      
+      # App settings
+      DEBUG: true
+      APP_NAME: "IEEE Paper Generator (Dev)"
+      
+      # File upload settings
+      MAX_FILE_SIZE: 10485760
+      UPLOAD_DIR: uploads
+      
+      # RAG settings
+      CHUNK_SIZE: 1000
+      CHUNK_OVERLAP: 200
+      TOP_K_RESULTS: 5
+      
+      # Generation settings
+      MAX_TOKENS: 2000
+      TEMPERATURE: 0.7
+      
+      # Embedding settings
+      EMBEDDING_MODEL: all-MiniLM-L6-v2
+      EMBEDDING_DIMENSION: 384
+    volumes:
+      - ./backend:/app  # Mount source code for hot reload
+      - backend_dev_uploads:/app/uploads
+      - backend_dev_models:/root/.cache/torch
+    ports:
+      - "8001:8000"  # Different port for dev
+    depends_on:
+      database:
+        condition: service_healthy
+    command: ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    restart: unless-stopped
+    networks:
+      - ieee_dev_network
+
+  # Frontend (Development mode)
+  frontend-dev:
+    image: node:18-alpine
+    container_name: ieee_paper_frontend_dev
+    working_dir: /app
+    environment:
+      VITE_API_BASE_URL: http://localhost:8001
+      VITE_APP_NAME: "IEEE Paper Generator (Dev)"
+      VITE_MAX_FILE_SIZE: 10485760
+      VITE_ALLOWED_FILE_TYPES: ".pdf,.docx"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules  # Anonymous volume for node_modules
+    ports:
+      - "3001:3000"  # Different port for dev
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    depends_on:
+      - backend-dev
+    restart: unless-stopped
+    networks:
+      - ieee_dev_network
+
+volumes:
+  postgres_dev_data:
+    driver: local
+  backend_dev_uploads:
+    driver: local
+  backend_dev_models:
+    driver: local
+
+networks:
+  ieee_dev_network:
+    driver: bridge

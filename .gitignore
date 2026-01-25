@@ -155,3 +155,15 @@ out/
 # yarn.lock
 # package-lock.json
 # pnpm-lock.yaml
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+*.sql
+!schema.sql
+
+# Docker volumes and data
+postgres_data/
+backend_uploads/
+backend_models/
+redis_data/

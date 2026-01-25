@@ -1,0 +1,132 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database with pgvector
+  database:
+    image: pgvector/pgvector:pg15
+    container_name: ieee_paper_db
+    environment:
+      POSTGRES_DB: ieee_papers
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres123}
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ieee_papers"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - ieee_network
+
+  # Backend API
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: ieee_paper_backend
+    environment:
+      # Database connection
+      SUPABASE_URL: postgresql://postgres:${DB_PASSWORD:-postgres123}@database:5432/ieee_papers
+      SUPABASE_KEY: ${SUPABASE_KEY}
+      
+      # AI API
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      
+      # App settings
+      DEBUG: ${DEBUG:-false}
+      APP_NAME: "IEEE Paper Generator"
+      
+      # File upload settings
+      MAX_FILE_SIZE: 10485760
+      UPLOAD_DIR: uploads
+      
+      # RAG settings
+      CHUNK_SIZE: 1000
+      CHUNK_OVERLAP: 200
+      TOP_K_RESULTS: 5
+      
+      # Generation settings
+      MAX_TOKENS: 2000
+      TEMPERATURE: 0.7
+      
+      # Embedding settings
+      EMBEDDING_MODEL: all-MiniLM-L6-v2
+      EMBEDDING_DIMENSION: 384
+    volumes:
+      - backend_uploads:/app/uploads
+      - backend_models:/root/.cache/torch  # Cache for sentence transformers
+    ports:
+      - "8000:8000"
+    depends_on:
+      database:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - ieee_network
+
+  # Frontend
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: ieee_paper_frontend
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000
+      VITE_APP_NAME: "IEEE Paper Generator"
+      VITE_MAX_FILE_SIZE: 10485760
+      VITE_ALLOWED_FILE_TYPES: ".pdf,.docx"
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - ieee_network
+
+  # Redis for caching (optional)
+  redis:
+    image: redis:7-alpine
+    container_name: ieee_paper_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - ieee_network
+
+volumes:
+  postgres_data:
+    driver: local
+  backend_uploads:
+    driver: local
+  backend_models:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  ieee_network:
+    driver: bridge

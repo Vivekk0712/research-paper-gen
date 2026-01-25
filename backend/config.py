@@ -1,10 +1,11 @@
 from pydantic_settings import BaseSettings
 from functools import lru_cache
+import os
 
 class Settings(BaseSettings):
-    # Supabase
+    # Supabase (can be local PostgreSQL or external Supabase)
     supabase_url: str
-    supabase_key: str
+    supabase_key: str = ""  # Optional for local PostgreSQL
     
     # Gemini API (for text generation only)
     gemini_api_key: str
@@ -34,6 +35,11 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
+        
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # Ensure upload directory exists
+        os.makedirs(self.upload_dir, exist_ok=True)
 
 @lru_cache()
 def get_settings():
