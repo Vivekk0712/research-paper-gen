@@ -51,6 +51,10 @@ export const endpoints = {
   
   // Generation
   generateContent: '/api/generate',
+  generateCompletePaper: (paperId) => `/api/papers/${paperId}/generate-complete`,
+  
+  // Metrics
+  getPaperMetrics: (paperId) => `/api/papers/${paperId}/metrics`,
   
   // Export
   exportPaper: (paperId) => `/api/papers/${paperId}/export`,
@@ -103,6 +107,16 @@ export const apiService = {
   // Generation
   async generateContent(generationRequest) {
     const response = await api.post(endpoints.generateContent, generationRequest);
+    return response.data;
+  },
+
+  async generateCompletePaper(paperId) {
+    const response = await api.post(endpoints.generateCompletePaper(paperId));
+    return response.data;
+  },
+
+  async getPaperMetrics(paperId) {
+    const response = await api.get(endpoints.getPaperMetrics(paperId));
     return response.data;
   },
 

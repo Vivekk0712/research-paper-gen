@@ -29,8 +29,13 @@ class Settings(BaseSettings):
     top_k_results: int = 5
     
     # Generation settings
-    max_tokens: int = 2000
+    max_tokens: int = 8000  # Increased for longer content
     temperature: float = 0.7
+    
+    # Content generation settings
+    min_section_words: int = 800  # Minimum words per section
+    target_paper_pages: int = 12  # Target paper length
+    comprehensive_mode: bool = True  # Generate detailed content
     
     class Config:
         env_file = ".env"

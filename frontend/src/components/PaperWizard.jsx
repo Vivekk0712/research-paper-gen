@@ -1,8 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { 
-  ArrowLeft, Upload, FileText, Users, Tag, Brain, 
+  ArrowLeft, Upload, FileText, Brain, 
   CheckCircle, AlertCircle, Loader2, Download, Eye,
-  X, Plus, Trash2, Edit3, Save, RotateCcw, FileDown
+  X, Plus, Trash2, FileDown
 } from 'lucide-react'
 import { apiService } from '../config/api'
 import { validateFiles, formatFileSize } from '../utils/fileValidation'
@@ -142,7 +142,7 @@ const PaperWizard = ({ onBack }) => {
         downloadTextFile(result.latex, result.filename)
       } else if (format === 'pdf') {
         const blob = await apiService.exportPaperPdf(paperId)
-        downloadBlob(blob, `${paperData.title}.pdf`, 'application/pdf')
+        downloadBlob(blob, `${paperData.title}.pdf`)
       }
     } catch (err) {
       setError(`Export failed: ${err.message}`)
@@ -153,10 +153,10 @@ const PaperWizard = ({ onBack }) => {
 
   const downloadTextFile = (content, filename) => {
     const blob = new Blob([content], { type: 'text/plain' })
-    downloadBlob(blob, filename, 'text/plain')
+    downloadBlob(blob, filename)
   }
 
-  const downloadBlob = (blob, filename, mimeType) => {
+  const downloadBlob = (blob, filename) => {
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -165,6 +165,34 @@ const PaperWizard = ({ onBack }) => {
     a.click()
     window.URL.revokeObjectURL(url)
     document.body.removeChild(a)
+  }
+
+  const generateCompletePaper = async () => {
+    if (!paperId) return
+
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      const result = await apiService.generateCompletePaper(paperId)
+      
+      // Refresh sections to show all generated content
+      const sections = await apiService.getSections(paperId)
+      const sectionsMap = {}
+      sections.forEach(section => {
+        sectionsMap[section.section_name] = section
+      })
+      setGeneratedSections(sectionsMap)
+      
+      // Show success message with metrics
+      setError(null)
+      alert(`Complete paper generated successfully!\n\nSections: ${result.sections_generated}\nTotal words: ${result.total_words}\nEstimated pages: ${result.estimated_pages}`)
+      
+    } catch (err) {
+      setError(`Complete paper generation failed: ${err.message}`)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const generateAllSections = async () => {
@@ -501,7 +529,7 @@ const PaperWizard = ({ onBack }) => {
                   <p className="text-gray-300">AI is generating your paper sections</p>
                 </div>
 
-                <div className="flex justify-center mb-8">
+                <div className="flex justify-center mb-8 space-x-4">
                   <button
                     onClick={generateAllSections}
                     disabled={isLoading}
@@ -515,7 +543,25 @@ const PaperWizard = ({ onBack }) => {
                     ) : (
                       <>
                         <Brain className="w-5 h-5 mr-2 inline" />
-                        Generate All Sections
+                        Generate Selected Sections
+                      </>
+                    )}
+                  </button>
+                  
+                  <button
+                    onClick={generateCompletePaper}
+                    disabled={isLoading}
+                    className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold px-8 py-4 rounded-xl transition-all duration-300 disabled:opacity-50"
+                  >
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="w-5 h-5 mr-2 animate-spin inline" />
+                        Generating Complete Paper...
+                      </>
+                    ) : (
+                      <>
+                        <FileText className="w-5 h-5 mr-2 inline" />
+                        Generate Complete Paper (10+ pages)
                       </>
                     )}
                   </button>

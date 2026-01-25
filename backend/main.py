@@ -16,6 +16,8 @@ from models import (
 from database import supabase
 from services.file_processor import FileProcessor
 from services.latex_service import LaTeXService
+from services.content_generator import ComprehensiveContentGenerator
+
 from config import get_settings
 
 settings = get_settings()
@@ -23,6 +25,7 @@ genai.configure(api_key=settings.gemini_api_key)
 
 # Initialize services
 latex_service = LaTeXService()
+content_generator = ComprehensiveContentGenerator()
 
 app = FastAPI(title="IEEE Paper Generator API")
 
@@ -172,7 +175,7 @@ async def get_sections(paper_id: str):
 
 @app.post("/api/generate", response_model=GenerationResponse)
 async def generate_content(request: GenerationRequest):
-    """Generate content for a specific section using RAG"""
+    """Generate comprehensive content for a specific section using RAG"""
     try:
         # Get paper info
         paper_result = supabase.table("papers").select("*").eq("paper_id", str(request.paper_id)).execute()
@@ -189,53 +192,39 @@ async def generate_content(request: GenerationRequest):
         # Retrieve relevant chunks using vector similarity
         chunks_result = supabase.rpc("match_documents", {
             "query_embedding": query_embedding,
-            "match_threshold": 0.7,
-            "match_count": settings.top_k_results,
+            "match_threshold": 0.6,  # Lowered threshold for more context
+            "match_count": 10,  # Increased for more comprehensive context
             "paper_id": str(request.paper_id)
         }).execute()
         
-        # Prepare context from retrieved chunks
+        # Prepare comprehensive context from retrieved chunks
         context = ""
         if chunks_result.data:
             context = "\n\n".join([chunk["content"] for chunk in chunks_result.data])
         
-        # Generate content using Gemini 2.5 Flash
-        model = genai.GenerativeModel('gemini-2.5-flash')
-        
-        prompt = f"""
-        You are an expert academic writer specializing in IEEE format papers.
-        
-        Paper Title: {paper['title']}
-        Domain: {paper['domain']}
-        Section: {request.section_name}
-        
-        Context from uploaded reference papers:
-        {context}
-        
-        Generate a comprehensive {request.section_name} section for this IEEE paper.
-        Follow IEEE formatting guidelines and academic writing standards.
-        Include proper citations where appropriate (use [1], [2], etc. format).
-        Make sure the content is relevant to the domain and builds upon the provided context.
-        
-        The section should be well-structured, technically accurate, and suitable for publication.
-        """
-        
-        response = model.generate_content(
-            prompt,
-            generation_config=genai.types.GenerationConfig(
-                max_output_tokens=settings.max_tokens,
-                temperature=settings.temperature,
-            )
+        # Generate comprehensive content using enhanced generator
+        generated_content = content_generator.generate_section_content(
+            section_name=request.section_name,
+            paper_title=paper['title'],
+            domain=paper['domain'],
+            context=context,
+            paper_info=paper
         )
         
-        generated_content = response.text
+        # Estimate content metrics
+        metrics = content_generator.estimate_content_length(generated_content)
         
         # Save generated section
         section_result = supabase.table("sections").insert({
             "paper_id": str(request.paper_id),
             "section_name": request.section_name,
             "content": generated_content,
-            "order_index": 0  # Will be updated by user
+            "order_index": 0,  # Will be updated by user
+            "metadata": {
+                "word_count": metrics["words"],
+                "estimated_pages": metrics["estimated_pages"],
+                "generation_timestamp": "now()"
+            }
         }).execute()
         
         if section_result.data:
@@ -349,6 +338,112 @@ async def export_paper_pdf(paper_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/papers/{paper_id}/generate-complete")
+async def generate_complete_paper(paper_id: str):
+    """Generate a complete comprehensive IEEE paper with all sections"""
+    try:
+        # Get paper info
+        paper_result = supabase.table("papers").select("*").eq("paper_id", paper_id).execute()
+        if not paper_result.data:
+            raise HTTPException(status_code=404, detail="Paper not found")
+        
+        paper = paper_result.data[0]
+        
+        # Define comprehensive section list for a full paper
+        comprehensive_sections = [
+            "Abstract",
+            "Introduction", 
+            "Literature Review",
+            "Methodology",
+            "System Design",
+            "Implementation",
+            "Experimental Setup",
+            "Results",
+            "Discussion",
+            "Conclusion",
+            "Future Work"
+        ]
+        
+        # Generate query embedding for comprehensive context
+        file_processor = FileProcessor()
+        query = f"comprehensive research paper {paper['title']} {paper['domain']}"
+        query_embedding = file_processor.generate_embeddings(query)
+        
+        # Retrieve all relevant chunks for comprehensive context
+        chunks_result = supabase.rpc("match_documents", {
+            "query_embedding": query_embedding,
+            "match_threshold": 0.5,  # Lower threshold for more comprehensive context
+            "match_count": 20,  # More chunks for comprehensive content
+            "paper_id": str(paper_id)
+        }).execute()
+        
+        # Prepare comprehensive context
+        context = ""
+        if chunks_result.data:
+            context = "\n\n".join([chunk["content"] for chunk in chunks_result.data])
+        
+        generated_sections = []
+        total_words = 0
+        
+        # Generate each section comprehensively
+        for section_name in comprehensive_sections:
+            try:
+                # Generate comprehensive content
+                generated_content = content_generator.generate_section_content(
+                    section_name=section_name,
+                    paper_title=paper['title'],
+                    domain=paper['domain'],
+                    context=context,
+                    paper_info=paper
+                )
+                
+                # Estimate metrics
+                metrics = content_generator.estimate_content_length(generated_content)
+                total_words += metrics["words"]
+                
+                # Save generated section
+                section_result = supabase.table("sections").insert({
+                    "paper_id": str(paper_id),
+                    "section_name": section_name,
+                    "content": generated_content,
+                    "order_index": len(generated_sections),
+                    "metadata": {
+                        "word_count": metrics["words"],
+                        "estimated_pages": metrics["estimated_pages"],
+                        "generation_timestamp": "now()"
+                    }
+                }).execute()
+                
+                if section_result.data:
+                    generated_sections.append({
+                        "section_id": section_result.data[0]["section_id"],
+                        "section_name": section_name,
+                        "word_count": metrics["words"],
+                        "estimated_pages": metrics["estimated_pages"]
+                    })
+                
+            except Exception as e:
+                print(f"Error generating {section_name}: {str(e)}")
+                continue
+        
+        # Calculate total paper metrics
+        total_pages = total_words / 250  # Rough estimate: 250 words per page
+        
+        return {
+            "message": "Complete paper generated successfully",
+            "paper_id": paper_id,
+            "sections_generated": len(generated_sections),
+            "total_words": total_words,
+            "estimated_pages": round(total_pages, 1),
+            "sections": generated_sections
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+
 @app.get("/api/latex/status")
 async def latex_status():
     """Check LaTeX availability"""
@@ -358,5 +453,43 @@ async def latex_status():
                   else "LaTeX not found. Install TeX Live or MiKTeX for PDF export."
     }
 
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+@app.get("/api/papers/{paper_id}/metrics")
+async def get_paper_metrics(paper_id: str):
+    """Get comprehensive metrics for a paper"""
+    try:
+        # Get all sections for the paper
+        sections_result = supabase.table("sections").select("*").eq("paper_id", paper_id).execute()
+        
+        total_words = 0
+        total_sections = len(sections_result.data)
+        section_metrics = []
+        
+        for section in sections_result.data:
+            content = section.get('content', '')
+            words = len(content.split())
+            total_words += words
+            
+            section_metrics.append({
+                "section_name": section.get('section_name', ''),
+                "word_count": words,
+                "estimated_pages": round(words / 250, 1)
+            })
+        
+        total_pages = round(total_words / 250, 1)
+        
+        return {
+            "paper_id": paper_id,
+            "total_sections": total_sections,
+            "total_words": total_words,
+            "estimated_pages": total_pages,
+            "average_words_per_section": round(total_words / max(total_sections, 1)),
+            "sections": section_metrics,
+            "quality_assessment": {
+                "comprehensive": total_pages >= 10,
+                "substantial": total_words >= 8000,
+                "publication_ready": total_pages >= 8 and total_sections >= 6
+            }
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
