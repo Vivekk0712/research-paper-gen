@@ -13,25 +13,28 @@
 git clone <your-repo-url>
 cd Research_Paper_Gen
 
-# Setup environment files
+# Secure setup (recommended) - generates random passwords
+make setup-secure
+
+# OR basic setup (requires manual password change)
 make setup
-# OR manually:
-cp .env.docker .env
-cp frontend/.env.example frontend/.env
+# Then edit .env and change default passwords!
 ```
 
 ### 2. Configure Environment
 Edit `.env` file with your API keys:
 ```bash
-# Required
+# Required - Get from https://makersuite.google.com/app/apikey
 GEMINI_API_KEY=your_gemini_api_key_here
+
+# Database password (auto-generated if using make setup-secure)
+DB_PASSWORD=your_secure_random_password
 
 # Optional (for external Supabase)
 SUPABASE_KEY=your_supabase_key
-
-# Database password
-DB_PASSWORD=your_secure_password
 ```
+
+⚠️ **Security Note**: Never commit `.env` files or use default passwords in production!
 
 ### 3. Start the Application
 ```bash

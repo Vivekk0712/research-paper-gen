@@ -10,7 +10,7 @@ services:
     environment:
       POSTGRES_DB: ieee_papers_dev
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres123}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-CHANGE_ME_SECURE_PASSWORD}
       POSTGRES_HOST_AUTH_METHOD: trust
     volumes:
       - postgres_dev_data:/var/lib/postgresql/data
@@ -35,7 +35,7 @@ services:
     container_name: ieee_paper_backend_dev
     environment:
       # Database connection
-      SUPABASE_URL: postgresql://postgres:${DB_PASSWORD:-postgres123}@database:5432/ieee_papers_dev
+      SUPABASE_URL: postgresql://postgres:${DB_PASSWORD:-CHANGE_ME_SECURE_PASSWORD}@database:5432/ieee_papers_dev
       SUPABASE_KEY: ${SUPABASE_KEY}
       
       # AI API

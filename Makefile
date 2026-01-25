@@ -30,6 +30,7 @@ help:
 	@echo ""
 	@echo "Utility Commands:"
 	@echo "  make setup          - Initial setup (copy env files)"
+	@echo "  make setup-secure   - Generate secure environment with random passwords"
 	@echo "  make test           - Run tests"
 	@echo "  make health         - Check service health"
 
@@ -37,9 +38,30 @@ help:
 .PHONY: setup
 setup:
 	@echo "Setting up IEEE Paper Generator..."
-	@if [ ! -f .env ]; then cp .env.docker .env; echo "Created .env file - please edit with your values"; fi
+	@if [ ! -f .env ]; then \
+		if command -v openssl >/dev/null 2>&1; then \
+			echo "🔐 Generating secure environment..."; \
+			chmod +x scripts/generate-secure-env.sh; \
+			./scripts/generate-secure-env.sh; \
+		else \
+			echo "⚠️  OpenSSL not found. Creating basic .env file..."; \
+			cp .env.docker .env; \
+			echo "❗ IMPORTANT: Edit .env and change the default password!"; \
+		fi \
+	else \
+		echo "✅ .env file already exists"; \
+	fi
 	@if [ ! -f frontend/.env ]; then cp frontend/.env.example frontend/.env; fi
-	@echo "Setup complete! Edit .env files with your configuration."
+	@echo ""
+	@echo "📝 Setup complete! Next steps:"
+	@echo "1. Edit .env file and add your GEMINI_API_KEY"
+	@echo "2. Run 'make up' to start the application"
+
+.PHONY: setup-secure
+setup-secure:
+	@echo "🔐 Generating secure environment configuration..."
+	@chmod +x scripts/generate-secure-env.sh
+	@./scripts/generate-secure-env.sh
 
 # Production commands
 .PHONY: build
