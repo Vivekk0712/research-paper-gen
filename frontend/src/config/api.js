@@ -54,6 +54,11 @@ export const endpoints = {
   
   // Export
   exportPaper: (paperId) => `/api/papers/${paperId}/export`,
+  exportPaperLatex: (paperId) => `/api/papers/${paperId}/export/latex`,
+  exportPaperPdf: (paperId) => `/api/papers/${paperId}/export/pdf`,
+  
+  // LaTeX status
+  latexStatus: '/api/latex/status',
 };
 
 // API service functions
@@ -104,6 +109,23 @@ export const apiService = {
   // Export
   async exportPaper(paperId) {
     const response = await api.get(endpoints.exportPaper(paperId));
+    return response.data;
+  },
+
+  async exportPaperLatex(paperId) {
+    const response = await api.get(endpoints.exportPaperLatex(paperId));
+    return response.data;
+  },
+
+  async exportPaperPdf(paperId) {
+    const response = await api.get(endpoints.exportPaperPdf(paperId), {
+      responseType: 'blob'
+    });
+    return response.data;
+  },
+
+  async getLatexStatus() {
+    const response = await api.get(endpoints.latexStatus);
     return response.data;
   },
 };

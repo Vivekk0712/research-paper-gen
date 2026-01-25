@@ -1,12 +1,13 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 import uvicorn
 import os
 import uuid
 from pathlib import Path
 from typing import List
 import google.generativeai as genai
+import tempfile
 
 from models import (
     PaperCreate, PaperResponse, SectionCreate, SectionResponse,
@@ -14,10 +15,14 @@ from models import (
 )
 from database import supabase
 from services.file_processor import FileProcessor
+from services.latex_service import LaTeXService
 from config import get_settings
 
 settings = get_settings()
 genai.configure(api_key=settings.gemini_api_key)
+
+# Initialize services
+latex_service = LaTeXService()
 
 app = FastAPI(title="IEEE Paper Generator API")
 
@@ -195,7 +200,7 @@ async def generate_content(request: GenerationRequest):
             context = "\n\n".join([chunk["content"] for chunk in chunks_result.data])
         
         # Generate content using Gemini 2.5 Flash
-        model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        model = genai.GenerativeModel('gemini-2.5-flash')
         
         prompt = f"""
         You are an expert academic writer specializing in IEEE format papers.
@@ -279,6 +284,79 @@ Keywords: {', '.join(paper['keywords'])}
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/papers/{paper_id}/export/latex")
+async def export_paper_latex(paper_id: str):
+    """Export paper as IEEE-formatted LaTeX"""
+    try:
+        # Get paper info
+        paper_result = supabase.table("papers").select("*").eq("paper_id", paper_id).execute()
+        if not paper_result.data:
+            raise HTTPException(status_code=404, detail="Paper not found")
+        
+        paper = paper_result.data[0]
+        
+        # Get all sections
+        sections_result = supabase.table("sections").select("*").eq("paper_id", paper_id).order("order_index").execute()
+        
+        # Generate LaTeX
+        latex_content = latex_service.generate_ieee_paper_latex(paper, sections_result.data)
+        
+        return {
+            "latex": latex_content,
+            "filename": f"{paper['title'].replace(' ', '_')}.tex"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/papers/{paper_id}/export/pdf")
+async def export_paper_pdf(paper_id: str):
+    """Export paper as IEEE-formatted PDF"""
+    try:
+        # Check if LaTeX is available
+        if not latex_service.is_latex_available():
+            raise HTTPException(
+                status_code=503, 
+                detail="LaTeX not available on server. Please install TeX Live or MiKTeX."
+            )
+        
+        # Get paper info
+        paper_result = supabase.table("papers").select("*").eq("paper_id", paper_id).execute()
+        if not paper_result.data:
+            raise HTTPException(status_code=404, detail="Paper not found")
+        
+        paper = paper_result.data[0]
+        
+        # Get all sections
+        sections_result = supabase.table("sections").select("*").eq("paper_id", paper_id).order("order_index").execute()
+        
+        # Generate LaTeX
+        latex_content = latex_service.generate_ieee_paper_latex(paper, sections_result.data)
+        
+        # Compile to PDF
+        with tempfile.TemporaryDirectory() as temp_dir:
+            tex_file, pdf_file = latex_service.compile_to_pdf(latex_content, temp_dir)
+            
+            # Return PDF file
+            filename = f"{paper['title'].replace(' ', '_')}.pdf"
+            return FileResponse(
+                pdf_file,
+                media_type="application/pdf",
+                filename=filename
+            )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/latex/status")
+async def latex_status():
+    """Check LaTeX availability"""
+    return {
+        "latex_available": latex_service.is_latex_available(),
+        "message": "LaTeX is available" if latex_service.is_latex_available() 
+                  else "LaTeX not found. Install TeX Live or MiKTeX for PDF export."
+    }
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -1,8 +1,8 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { 
   ArrowLeft, Upload, FileText, Users, Tag, Brain, 
   CheckCircle, AlertCircle, Loader2, Download, Eye,
-  X, Plus, Trash2, Edit3, Save, RotateCcw
+  X, Plus, Trash2, Edit3, Save, RotateCcw, FileDown
 } from 'lucide-react'
 import { apiService } from '../config/api'
 import { validateFiles, formatFileSize } from '../utils/fileValidation'
@@ -12,6 +12,7 @@ const PaperWizard = ({ onBack }) => {
   const [currentStep, setCurrentStep] = useState(1)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [latexAvailable, setLatexAvailable] = useState(false)
   const fileInputRef = useRef(null)
   
   // Form data
@@ -27,6 +28,19 @@ const PaperWizard = ({ onBack }) => {
   const [generatedSections, setGeneratedSections] = useState({})
   const [selectedSections, setSelectedSections] = useState(['Abstract', 'Introduction', 'Literature Review'])
   const [paperId, setPaperId] = useState(null)
+
+  // Check LaTeX availability on component mount
+  useEffect(() => {
+    const checkLatexStatus = async () => {
+      try {
+        const status = await apiService.getLatexStatus()
+        setLatexAvailable(status.latex_available)
+      } catch (error) {
+        console.error('Failed to check LaTeX status:', error)
+      }
+    }
+    checkLatexStatus()
+  }, [])
 
   const steps = [
     { id: 1, title: 'Paper Details', icon: FileText },
@@ -113,6 +127,44 @@ const PaperWizard = ({ onBack }) => {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const exportPaper = async (format) => {
+    if (!paperId) return
+
+    setIsLoading(true)
+    try {
+      if (format === 'text') {
+        const result = await apiService.exportPaper(paperId)
+        downloadTextFile(result.paper, `${paperData.title}.txt`)
+      } else if (format === 'latex') {
+        const result = await apiService.exportPaperLatex(paperId)
+        downloadTextFile(result.latex, result.filename)
+      } else if (format === 'pdf') {
+        const blob = await apiService.exportPaperPdf(paperId)
+        downloadBlob(blob, `${paperData.title}.pdf`, 'application/pdf')
+      }
+    } catch (err) {
+      setError(`Export failed: ${err.message}`)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const downloadTextFile = (content, filename) => {
+    const blob = new Blob([content], { type: 'text/plain' })
+    downloadBlob(blob, filename, 'text/plain')
+  }
+
+  const downloadBlob = (blob, filename, mimeType) => {
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    window.URL.revokeObjectURL(url)
+    document.body.removeChild(a)
   }
 
   const generateAllSections = async () => {
@@ -533,13 +585,41 @@ const PaperWizard = ({ onBack }) => {
                   )}
                 </button>
               ) : (
-                <button
-                  onClick={() => {/* Export functionality */}}
-                  className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold px-6 py-3 rounded-xl transition-all duration-300"
-                >
-                  <Download className="w-5 h-5 mr-2 inline" />
-                  Export Paper
-                </button>
+                <div className="flex space-x-4">
+                  <button
+                    onClick={() => exportPaper('text')}
+                    disabled={isLoading}
+                    className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-semibold px-6 py-3 rounded-xl transition-all duration-300 disabled:opacity-50"
+                  >
+                    <FileDown className="w-5 h-5 mr-2 inline" />
+                    Export Text
+                  </button>
+                  
+                  <button
+                    onClick={() => exportPaper('latex')}
+                    disabled={isLoading}
+                    className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold px-6 py-3 rounded-xl transition-all duration-300 disabled:opacity-50"
+                  >
+                    <FileDown className="w-5 h-5 mr-2 inline" />
+                    Export LaTeX
+                  </button>
+                  
+                  {latexAvailable ? (
+                    <button
+                      onClick={() => exportPaper('pdf')}
+                      disabled={isLoading}
+                      className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold px-6 py-3 rounded-xl transition-all duration-300 disabled:opacity-50"
+                    >
+                      <Download className="w-5 h-5 mr-2 inline" />
+                      Export PDF
+                    </button>
+                  ) : (
+                    <div className="bg-gray-600 text-gray-300 font-semibold px-6 py-3 rounded-xl cursor-not-allowed">
+                      <Download className="w-5 h-5 mr-2 inline" />
+                      PDF (LaTeX not available)
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           </div>
