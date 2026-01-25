@@ -7,6 +7,7 @@ import {
 import { logConnectionStatus } from './utils/connectionTest'
 import { APP_CONFIG } from './config/constants'
 import PaperWizard from './components/PaperWizard'
+import PapersList from './components/PapersList'
 import StatusIndicator from './components/StatusIndicator'
 import FeatureCard from './components/FeatureCard'
 import AnimatedBackground from './components/AnimatedBackground'
@@ -15,6 +16,7 @@ function App() {
   const [currentView, setCurrentView] = useState('home')
   const [connectionStatus, setConnectionStatus] = useState('checking')
   const [isLoading, setIsLoading] = useState(true)
+  const [selectedPaper, setSelectedPaper] = useState(null)
 
   useEffect(() => {
     const testConnection = async () => {
@@ -119,14 +121,24 @@ function App() {
               </p>
 
               {connectionStatus === 'connected' ? (
-                <button
-                  onClick={() => setCurrentView('wizard')}
-                  className="group inline-flex items-center bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold px-8 py-4 rounded-xl transition-all duration-300 transform hover:scale-105 hover:shadow-2xl"
-                >
-                  <Play className="w-5 h-5 mr-2 group-hover:translate-x-1 transition-transform" />
-                  Start Creating Paper
-                  <ChevronRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
-                </button>
+                <div className="space-y-4">
+                  <button
+                    onClick={() => setCurrentView('wizard')}
+                    className="group inline-flex items-center bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold px-8 py-4 rounded-xl transition-all duration-300 transform hover:scale-105 hover:shadow-2xl"
+                  >
+                    <Play className="w-5 h-5 mr-2 group-hover:translate-x-1 transition-transform" />
+                    Start Creating Paper
+                    <ChevronRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
+                  </button>
+                  
+                  <button
+                    onClick={() => setCurrentView('papers')}
+                    className="group inline-flex items-center bg-white/10 backdrop-blur-sm border border-white/20 hover:bg-white/20 text-white font-semibold px-8 py-4 rounded-xl transition-all duration-300 ml-4"
+                  >
+                    <FileText className="w-5 h-5 mr-2" />
+                    View My Papers
+                  </button>
+                </div>
               ) : (
                 <div className="bg-red-500/20 backdrop-blur-sm border border-red-300/30 rounded-xl p-6 max-w-md mx-auto">
                   <AlertCircle className="w-8 h-8 text-red-400 mx-auto mb-3" />
@@ -227,8 +239,28 @@ function App() {
         </div>
       )}
 
+      {currentView === 'papers' && (
+        <div className="relative z-10 container mx-auto px-6 py-20">
+          <div className="max-w-6xl mx-auto">
+            <PapersList 
+              onSelectPaper={(paper) => {
+                setSelectedPaper(paper)
+                setCurrentView('wizard')
+              }}
+              onCreateNew={() => {
+                setSelectedPaper(null)
+                setCurrentView('wizard')
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       {currentView === 'wizard' && (
-        <PaperWizard onBack={() => setCurrentView('home')} />
+        <PaperWizard 
+          onBack={() => setCurrentView('home')} 
+          existingPaper={selectedPaper}
+        />
       )}
     </div>
   )

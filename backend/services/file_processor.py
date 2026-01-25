@@ -4,7 +4,7 @@ import PyPDF2
 from docx import Document
 from typing import List, Tuple
 import google.generativeai as genai
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from sentence_transformers import SentenceTransformer
 import numpy as np
 from config import get_settings

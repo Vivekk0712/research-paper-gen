@@ -8,28 +8,36 @@ import { apiService } from '../config/api'
 import { validateFiles, formatFileSize } from '../utils/fileValidation'
 import { IEEE_SECTIONS } from '../config/constants'
 
-const PaperWizard = ({ onBack }) => {
+const PaperWizard = ({ onBack, existingPaper }) => {
   const [currentStep, setCurrentStep] = useState(1)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState(null)
   const [latexAvailable, setLatexAvailable] = useState(false)
   const fileInputRef = useRef(null)
   
-  // Form data
+  // Form data - initialize with existing paper if provided
   const [paperData, setPaperData] = useState({
-    title: '',
-    domain: '',
-    authors: [''],
-    affiliations: [''],
-    keywords: ['']
+    title: existingPaper?.title || '',
+    domain: existingPaper?.domain || '',
+    authors: existingPaper?.authors || [''],
+    affiliations: existingPaper?.affiliations || [''],
+    keywords: existingPaper?.keywords || ['']
   })
   
   const [uploadedFiles, setUploadedFiles] = useState([])
   const [generatedSections, setGeneratedSections] = useState({})
   const [selectedSections, setSelectedSections] = useState(['Abstract', 'Introduction', 'Literature Review'])
-  const [paperId, setPaperId] = useState(null)
+  const [paperId, setPaperId] = useState(existingPaper?.paper_id || null)
+  const [processingStatus, setProcessingStatus] = useState(null)
+  const [generationProgress, setGenerationProgress] = useState({
+    isGenerating: false,
+    currentSection: '',
+    progress: 0,
+    sectionsCompleted: 0,
+    totalSections: 11
+  })
 
-  // Check LaTeX availability on component mount
+  // Check LaTeX availability and load existing data on component mount
   useEffect(() => {
     const checkLatexStatus = async () => {
       try {
@@ -39,8 +47,51 @@ const PaperWizard = ({ onBack }) => {
         console.error('Failed to check LaTeX status:', error)
       }
     }
+    
+    const loadExistingData = async () => {
+      if (existingPaper && existingPaper.paper_id) {
+        try {
+          // Load uploaded files
+          const files = await apiService.getFiles(existingPaper.paper_id)
+          setUploadedFiles(files)
+          
+          // Load existing sections
+          const sections = await apiService.getSections(existingPaper.paper_id)
+          const sectionsMap = {}
+          sections.forEach(section => {
+            sectionsMap[section.section_name] = section
+          })
+          setGeneratedSections(sectionsMap)
+          
+          // Load processing status
+          if (files.length > 0) {
+            const status = await apiService.getProcessingStatus(existingPaper.paper_id)
+            setProcessingStatus(status)
+          }
+          
+          // Determine which step to start at
+          if (sections.length > 0) {
+            // Has sections, go to step 4 (Generate & Review)
+            setCurrentStep(4)
+          } else if (files.length > 0) {
+            // Has files, go to step 3 (Select Sections)
+            setCurrentStep(3)
+          } else {
+            // No files, go to step 2 (Upload References)
+            setCurrentStep(2)
+          }
+          
+        } catch (error) {
+          console.error('Failed to load existing paper data:', error)
+          // If loading fails, start from step 2
+          setCurrentStep(2)
+        }
+      }
+    }
+    
     checkLatexStatus()
-  }, [])
+    loadExistingData()
+  }, [existingPaper])
 
   const steps = [
     { id: 1, title: 'Paper Details', icon: FileText },
@@ -92,18 +143,41 @@ const PaperWizard = ({ onBack }) => {
         const paper = await apiService.createPaper(paperData)
         setPaperId(paper.paper_id)
         
-        // Upload files
+        // Upload files (now returns immediately)
         const uploadedFileData = await apiService.uploadFiles(paper.paper_id, validFiles)
         setUploadedFiles(prev => [...prev, ...uploadedFileData])
+        
+        // Start polling for processing status
+        pollProcessingStatus(paper.paper_id)
       } else {
         const uploadedFileData = await apiService.uploadFiles(paperId, validFiles)
         setUploadedFiles(prev => [...prev, ...uploadedFileData])
+        
+        // Start polling for processing status
+        pollProcessingStatus(paperId)
       }
     } catch (err) {
       setError(`Upload failed: ${err.message}`)
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const pollProcessingStatus = async (paperIdToCheck) => {
+    const checkStatus = async () => {
+      try {
+        const status = await apiService.getProcessingStatus(paperIdToCheck)
+        setProcessingStatus(status)
+        
+        if (!status.processing_complete) {
+          setTimeout(checkStatus, 2000) // Check every 2 seconds
+        }
+      } catch (error) {
+        console.error('Error checking processing status:', error)
+      }
+    }
+    
+    checkStatus()
   }
 
   const generateSection = async (sectionName) => {
@@ -141,8 +215,26 @@ const PaperWizard = ({ onBack }) => {
         const result = await apiService.exportPaperLatex(paperId)
         downloadTextFile(result.latex, result.filename)
       } else if (format === 'pdf') {
-        const blob = await apiService.exportPaperPdf(paperId)
-        downloadBlob(blob, `${paperData.title}.pdf`)
+        // Check if we have any sections
+        if (Object.keys(generatedSections).length === 0) {
+          setError('No sections generated yet. Please generate some content first.')
+          return
+        }
+        
+        try {
+          console.log('Starting PDF export...')
+          const blob = await apiService.exportPaperPdf(paperId)
+          console.log('PDF blob received:', blob.size, 'bytes')
+          downloadBlob(blob, `${paperData.title}.pdf`)
+          console.log('PDF download initiated')
+        } catch (pdfError) {
+          console.error('PDF export error:', pdfError)
+          if (pdfError.response?.status === 503) {
+            setError('PDF generation requires LaTeX to be installed on the server. Please contact your administrator.')
+          } else {
+            setError(`PDF generation failed: ${pdfError.message}`)
+          }
+        }
       }
     } catch (err) {
       setError(`Export failed: ${err.message}`)
@@ -167,6 +259,30 @@ const PaperWizard = ({ onBack }) => {
     document.body.removeChild(a)
   }
 
+  // Add resume generation function
+  const resumeGeneration = async () => {
+    if (!paperId) return
+
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      const result = await apiService.resumeGeneration(paperId)
+      
+      if (result.status === 'resumed') {
+        alert(`Paper generation resumed!\n\nContinuing from where it left off. This may take a few more minutes.`)
+        pollGenerationProgress()
+      } else {
+        alert(result.message)
+        setIsLoading(false)
+      }
+      
+    } catch (err) {
+      setError(`Resume generation failed: ${err.message}`)
+      setIsLoading(false)
+    }
+  }
+
   const generateCompletePaper = async () => {
     if (!paperId) return
 
@@ -174,25 +290,101 @@ const PaperWizard = ({ onBack }) => {
     setError(null)
 
     try {
+      // Start the background generation
       const result = await apiService.generateCompletePaper(paperId)
       
-      // Refresh sections to show all generated content
-      const sections = await apiService.getSections(paperId)
-      const sectionsMap = {}
-      sections.forEach(section => {
-        sectionsMap[section.section_name] = section
-      })
-      setGeneratedSections(sectionsMap)
-      
-      // Show success message with metrics
-      setError(null)
-      alert(`Complete paper generated successfully!\n\nSections: ${result.sections_generated}\nTotal words: ${result.total_words}\nEstimated pages: ${result.estimated_pages}`)
+      if (result.status === 'started') {
+        // Show initial message
+        alert(`Paper generation started in background!\n\nThis will take 4-8 minutes. The page will update automatically as sections are generated.`)
+        
+        // Start polling for progress
+        pollGenerationProgress()
+      } else {
+        // Handle immediate completion (shouldn't happen with new system)
+        handleGenerationComplete(result)
+      }
       
     } catch (err) {
       setError(`Complete paper generation failed: ${err.message}`)
-    } finally {
       setIsLoading(false)
     }
+  }
+
+  const pollGenerationProgress = async () => {
+    setGenerationProgress(prev => ({ ...prev, isGenerating: true }))
+    
+    const pollInterval = setInterval(async () => {
+      try {
+        const status = await apiService.getProcessingStatus(paperId)
+        
+        // Update sections as they're generated
+        const sections = await apiService.getSections(paperId)
+        const sectionsMap = {}
+        sections.forEach(section => {
+          sectionsMap[section.section_name] = section
+        })
+        setGeneratedSections(sectionsMap)
+        
+        // Update progress state
+        const progress = status.generation_status
+        setGenerationProgress({
+          isGenerating: true,
+          currentSection: progress.current_section || '',
+          progress: progress.progress_percentage || 0,
+          sectionsCompleted: progress.sections_generated || 0,
+          totalSections: 11
+        })
+        
+        // Check if generation is complete
+        if (status.overall_status === 'completed') {
+          clearInterval(pollInterval)
+          setIsLoading(false)
+          setGenerationProgress(prev => ({ ...prev, isGenerating: false }))
+          
+          const finalStats = status.generation_status
+          alert(`Complete paper generated successfully!\n\nSections: ${finalStats.sections_generated}\nTotal words: ${finalStats.total_words}\nEstimated pages: ${finalStats.estimated_pages}`)
+          
+        } else if (status.overall_status === 'error') {
+          clearInterval(pollInterval)
+          setIsLoading(false)
+          setGenerationProgress(prev => ({ ...prev, isGenerating: false }))
+          setError('Paper generation failed. Please try again.')
+          
+        } else if (status.generation_status.status.startsWith('generating')) {
+          // Continue polling - progress is already updated above
+          console.log(`Generating: ${progress.current_section} (${progress.progress_percentage}%)`)
+        }
+        
+      } catch (err) {
+        console.error('Error polling status:', err)
+        // Continue polling even if one request fails
+      }
+    }, 3000) // Poll every 3 seconds
+
+    // Stop polling after 15 minutes (safety timeout)
+    setTimeout(() => {
+      clearInterval(pollInterval)
+      if (isLoading) {
+        setIsLoading(false)
+        setGenerationProgress(prev => ({ ...prev, isGenerating: false }))
+        setError('Generation timeout. Please check the sections - some may have been generated.')
+      }
+    }, 15 * 60 * 1000)
+  }
+
+  const handleGenerationComplete = async (result) => {
+    // Refresh sections to show all generated content
+    const sections = await apiService.getSections(paperId)
+    const sectionsMap = {}
+    sections.forEach(section => {
+      sectionsMap[section.section_name] = section
+    })
+    setGeneratedSections(sectionsMap)
+    
+    // Show success message with metrics
+    setError(null)
+    setIsLoading(false)
+    alert(`Complete paper generated successfully!\n\nSections: ${result.sections_generated || 'undefined'}\nTotal words: ${result.total_words || 'undefined'}\nEstimated pages: ${result.estimated_pages || 'undefined'}`)
   }
 
   const generateAllSections = async () => {
@@ -211,8 +403,11 @@ const PaperWizard = ({ onBack }) => {
       
       setIsLoading(true)
       try {
-        const paper = await apiService.createPaper(paperData)
-        setPaperId(paper.paper_id)
+        if (!paperId) {
+          // Create new paper
+          const paper = await apiService.createPaper(paperData)
+          setPaperId(paper.paper_id)
+        }
         setCurrentStep(2)
       } catch (err) {
         setError(`Failed to create paper: ${err.message}`)
@@ -255,6 +450,13 @@ const PaperWizard = ({ onBack }) => {
               <ArrowLeft className="w-5 h-5 mr-2" />
               Back to Home
             </button>
+            
+            {existingPaper && (
+              <div className="text-center">
+                <h2 className="text-lg font-semibold text-white">Editing: {existingPaper.title}</h2>
+                <p className="text-sm text-purple-300">Continue working on your paper</p>
+              </div>
+            )}
             
             <div className="flex items-center space-x-4">
               {steps.map((step, index) => (
@@ -475,6 +677,29 @@ const PaperWizard = ({ onBack }) => {
                         <CheckCircle className="w-6 h-6 text-green-400" />
                       </div>
                     ))}
+                    
+                    {processingStatus && (
+                      <div className="bg-blue-500/20 backdrop-blur-sm border border-blue-300/30 rounded-xl p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-blue-300 font-medium">Processing Files</span>
+                          <span className="text-blue-200 text-sm">
+                            {processingStatus.processed_files}/{processingStatus.total_files} files
+                          </span>
+                        </div>
+                        <div className="w-full bg-blue-900/30 rounded-full h-2">
+                          <div 
+                            className="bg-blue-400 h-2 rounded-full transition-all duration-300"
+                            style={{ width: `${processingStatus.progress_percentage}%` }}
+                          ></div>
+                        </div>
+                        <p className="text-blue-200 text-xs mt-2">
+                          {processingStatus.processing_complete 
+                            ? "✅ All files processed and ready for generation"
+                            : "🔄 Processing files in background..."
+                          }
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -554,10 +779,20 @@ const PaperWizard = ({ onBack }) => {
                     className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold px-8 py-4 rounded-xl transition-all duration-300 disabled:opacity-50"
                   >
                     {isLoading ? (
-                      <>
-                        <Loader2 className="w-5 h-5 mr-2 animate-spin inline" />
-                        Generating Complete Paper...
-                      </>
+                      generationProgress.isGenerating ? (
+                        <>
+                          <Loader2 className="w-5 h-5 mr-2 animate-spin inline" />
+                          {generationProgress.currentSection ? 
+                            `Generating ${generationProgress.currentSection} (${generationProgress.sectionsCompleted}/${generationProgress.totalSections})` :
+                            'Starting generation...'
+                          }
+                        </>
+                      ) : (
+                        <>
+                          <Loader2 className="w-5 h-5 mr-2 animate-spin inline" />
+                          Generating Complete Paper...
+                        </>
+                      )
                     ) : (
                       <>
                         <FileText className="w-5 h-5 mr-2 inline" />
@@ -565,7 +800,54 @@ const PaperWizard = ({ onBack }) => {
                       </>
                     )}
                   </button>
+                  
+                  {/* Resume Generation Button */}
+                  {Object.keys(generatedSections).length > 0 && Object.keys(generatedSections).length < 11 && (
+                    <button
+                      onClick={resumeGeneration}
+                      disabled={isLoading}
+                      className="bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white font-semibold px-8 py-4 rounded-xl transition-all duration-300 disabled:opacity-50"
+                    >
+                      {isLoading ? (
+                        <>
+                          <Loader2 className="w-5 h-5 mr-2 animate-spin inline" />
+                          Resuming...
+                        </>
+                      ) : (
+                        <>
+                          <FileText className="w-5 h-5 mr-2 inline" />
+                          Resume Generation ({Object.keys(generatedSections).length}/11 done)
+                        </>
+                      )}
+                    </button>
+                  )}
                 </div>
+
+                {/* Progress indicator for complete paper generation */}
+                {generationProgress.isGenerating && (
+                  <div className="bg-white/10 rounded-xl p-6 mb-6">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-white font-medium">
+                        {generationProgress.currentSection ? 
+                          `Currently generating: ${generationProgress.currentSection}` :
+                          'Preparing generation...'
+                        }
+                      </span>
+                      <span className="text-white/70">
+                        {generationProgress.sectionsCompleted}/{generationProgress.totalSections} sections
+                      </span>
+                    </div>
+                    <div className="w-full bg-white/20 rounded-full h-2">
+                      <div 
+                        className="bg-gradient-to-r from-green-400 to-emerald-400 h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${generationProgress.progress}%` }}
+                      ></div>
+                    </div>
+                    <div className="text-center text-white/70 text-sm mt-2">
+                      {generationProgress.progress}% complete
+                    </div>
+                  </div>
+                )}
 
                 <div className="space-y-6">
                   {selectedSections.map((section) => (
@@ -589,8 +871,17 @@ const PaperWizard = ({ onBack }) => {
                       
                       {generatedSections[section] ? (
                         <div className="bg-white/5 rounded-lg p-4">
-                          <p className="text-gray-300 whitespace-pre-wrap">
-                            {generatedSections[section].content}
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-3">
+                              <CheckCircle className="w-5 h-5 text-green-400" />
+                              <span className="text-green-400 font-medium">Generated successfully</span>
+                            </div>
+                            <div className="text-gray-400 text-sm">
+                              {generatedSections[section].metadata?.word_count || 'N/A'} words
+                            </div>
+                          </div>
+                          <p className="text-gray-400 text-sm mt-2">
+                            Content available in export. Click export buttons above to download the full paper.
                           </p>
                         </div>
                       ) : (
@@ -653,14 +944,14 @@ const PaperWizard = ({ onBack }) => {
                   {latexAvailable ? (
                     <button
                       onClick={() => exportPaper('pdf')}
-                      disabled={isLoading}
+                      disabled={isLoading || Object.keys(generatedSections).length === 0}
                       className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-semibold px-6 py-3 rounded-xl transition-all duration-300 disabled:opacity-50"
                     >
                       <Download className="w-5 h-5 mr-2 inline" />
                       Export PDF
                     </button>
                   ) : (
-                    <div className="bg-gray-600 text-gray-300 font-semibold px-6 py-3 rounded-xl cursor-not-allowed">
+                    <div className="bg-gray-600 text-gray-300 font-semibold px-6 py-3 rounded-xl cursor-not-allowed" title="LaTeX is required for PDF generation. Please install TeX Live or MiKTeX on the server.">
                       <Download className="w-5 h-5 mr-2 inline" />
                       PDF (LaTeX not available)
                     </div>

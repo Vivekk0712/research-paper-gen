@@ -6,7 +6,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000
 // Create axios instance with default config
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000, // 30 seconds timeout for file uploads
+  timeout: 120000, // Increased to 2 minutes for file uploads
   headers: {
     'Content-Type': 'application/json',
   },
@@ -41,9 +41,11 @@ export const endpoints = {
   // Papers
   createPaper: '/api/papers',
   getPaper: (id) => `/api/papers/${id}`,
+  listPapers: '/api/papers',
   
   // File uploads
   uploadFiles: (paperId) => `/api/papers/${paperId}/upload`,
+  getFiles: (paperId) => `/api/papers/${paperId}/files`,
   
   // Sections
   createSection: (paperId) => `/api/papers/${paperId}/sections`,
@@ -61,8 +63,8 @@ export const endpoints = {
   exportPaperLatex: (paperId) => `/api/papers/${paperId}/export/latex`,
   exportPaperPdf: (paperId) => `/api/papers/${paperId}/export/pdf`,
   
-  // LaTeX status
-  latexStatus: '/api/latex/status',
+  // Processing status
+  getProcessingStatus: (paperId) => `/api/papers/${paperId}/processing-status`,
 };
 
 // API service functions
@@ -78,6 +80,11 @@ export const apiService = {
     return response.data;
   },
 
+  async listPapers() {
+    const response = await api.get(endpoints.listPapers);
+    return response.data;
+  },
+
   // File uploads
   async uploadFiles(paperId, files) {
     const formData = new FormData();
@@ -89,7 +96,17 @@ export const apiService = {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      timeout: 300000, // 5 minutes for file uploads
+      onUploadProgress: (progressEvent) => {
+        const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+        console.log(`Upload progress: ${percentCompleted}%`);
+      },
     });
+    return response.data;
+  },
+
+  async getFiles(paperId) {
+    const response = await api.get(endpoints.getFiles(paperId));
     return response.data;
   },
 
@@ -111,12 +128,24 @@ export const apiService = {
   },
 
   async generateCompletePaper(paperId) {
-    const response = await api.post(endpoints.generateCompletePaper(paperId));
+    const response = await api.post(endpoints.generateCompletePaper(paperId), {}, {
+      timeout: 600000, // 10 minutes for complete paper generation
+    });
+    return response.data;
+  },
+
+  async resumeGeneration(paperId) {
+    const response = await api.post(`/api/papers/${paperId}/resume-generation`);
     return response.data;
   },
 
   async getPaperMetrics(paperId) {
     const response = await api.get(endpoints.getPaperMetrics(paperId));
+    return response.data;
+  },
+
+  async getLatexStatus() {
+    const response = await api.get('/api/latex/status');
     return response.data;
   },
 
@@ -138,8 +167,8 @@ export const apiService = {
     return response.data;
   },
 
-  async getLatexStatus() {
-    const response = await api.get(endpoints.latexStatus);
+  async getProcessingStatus(paperId) {
+    const response = await api.get(endpoints.getProcessingStatus(paperId));
     return response.data;
   },
 };

@@ -2,6 +2,7 @@ import google.generativeai as genai
 from typing import Dict, List, Optional
 from config import get_settings
 import re
+import time
 
 settings = get_settings()
 
@@ -10,80 +11,97 @@ class ComprehensiveContentGenerator:
     
     def __init__(self):
         genai.configure(api_key=settings.gemini_api_key)
-        self.model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        self.model = genai.GenerativeModel('gemini-2.5-flash')  # Using stable free model
+        print("✅ Initialized ContentGenerator with gemini-2.5-flash")
+    
+    def test_api_connection(self) -> bool:
+        """Test if API is working and has quota available"""
+        try:
+            response = self.model.generate_content(
+                "Test message. Respond with 'API working'.",
+                generation_config=genai.types.GenerationConfig(
+                    max_output_tokens=10,
+                    temperature=0.1,
+                )
+            )
+            print("✅ API test successful")
+            return True
+        except Exception as e:
+            print(f"❌ API test failed: {str(e)}")
+            return False
     
     def get_section_requirements(self, section_name: str) -> Dict[str, str]:
-        """Get specific requirements for each IEEE section"""
+        """Get specific requirements for each IEEE section - optimized for shorter content"""
         requirements = {
             "Abstract": {
-                "length": "200-300 words",
+                "length": "150-200 words",
                 "structure": "Background, Problem, Method, Results, Conclusion",
                 "requirements": "Concise summary of entire paper, no citations, standalone"
             },
             "Introduction": {
-                "length": "800-1200 words", 
-                "structure": "Background, Problem Statement, Motivation, Contributions, Paper Organization",
-                "requirements": "Clear problem definition, motivation, research gap, contributions, paper roadmap"
+                "length": "400-600 words", 
+                "structure": "Background, Problem Statement, Motivation, Contributions",
+                "requirements": "Clear problem definition, motivation, research gap, contributions"
             },
             "Literature Review": {
-                "length": "1500-2000 words",
+                "length": "500-700 words",
                 "structure": "Related Work Categories, Critical Analysis, Research Gaps",
-                "requirements": "Comprehensive survey, critical analysis, identify gaps, position work"
+                "requirements": "Comprehensive survey, critical analysis, identify gaps"
             },
             "Related Work": {
-                "length": "1200-1500 words",
-                "structure": "Categorized Related Work, Comparative Analysis, Positioning",
-                "requirements": "Systematic categorization, comparative analysis, clear positioning"
+                "length": "400-600 words",
+                "structure": "Categorized Related Work, Comparative Analysis",
+                "requirements": "Systematic categorization, comparative analysis"
             },
             "Methodology": {
-                "length": "1500-2500 words",
-                "structure": "System Architecture, Algorithm Design, Implementation Details, Evaluation Setup",
-                "requirements": "Detailed technical approach, algorithms, architecture, reproducible methodology"
+                "length": "600-800 words",
+                "structure": "System Architecture, Algorithm Design, Implementation Details",
+                "requirements": "Detailed technical approach, algorithms, architecture"
             },
             "System Design": {
-                "length": "1200-1800 words",
+                "length": "500-700 words",
                 "structure": "Architecture Overview, Component Design, Interface Specifications",
-                "requirements": "Detailed system architecture, component interactions, design decisions"
+                "requirements": "Detailed system architecture, component interactions"
             },
             "Implementation": {
-                "length": "1000-1500 words",
-                "structure": "Technology Stack, Development Process, Key Challenges, Solutions",
-                "requirements": "Technical implementation details, tools used, challenges overcome"
+                "length": "400-600 words",
+                "structure": "Technology Stack, Development Process, Key Challenges",
+                "requirements": "Technical implementation details, tools used, challenges"
             },
             "Experimental Setup": {
-                "length": "800-1200 words",
-                "structure": "Dataset Description, Evaluation Metrics, Baseline Methods, Environment",
-                "requirements": "Comprehensive experimental design, datasets, metrics, baselines"
+                "length": "300-500 words",
+                "structure": "Dataset Description, Evaluation Metrics, Baseline Methods",
+                "requirements": "Comprehensive experimental design, datasets, metrics"
             },
             "Results": {
-                "length": "1500-2000 words",
-                "structure": "Quantitative Results, Qualitative Analysis, Performance Comparison, Discussion",
-                "requirements": "Detailed results with analysis, comparisons, statistical significance"
+                "length": "500-700 words",
+                "structure": "Quantitative Results, Performance Comparison, Discussion",
+                "requirements": "Detailed results with analysis, comparisons"
             },
             "Evaluation": {
-                "length": "1200-1800 words",
-                "structure": "Performance Analysis, Comparison Studies, Ablation Studies, Discussion",
-                "requirements": "Thorough evaluation with multiple perspectives and analyses"
+                "length": "400-600 words",
+                "structure": "Performance Analysis, Comparison Studies, Discussion",
+                "requirements": "Thorough evaluation with multiple perspectives"
             },
             "Discussion": {
-                "length": "1000-1500 words",
-                "structure": "Key Findings, Implications, Limitations, Future Directions",
-                "requirements": "Critical analysis of results, implications, honest limitations discussion"
+                "length": "400-600 words",
+                "structure": "Key Findings, Implications, Limitations",
+                "requirements": "Critical analysis of results, implications, limitations"
             },
             "Conclusion": {
-                "length": "400-600 words",
-                "structure": "Summary, Key Contributions, Impact, Future Work",
-                "requirements": "Concise summary, clear contributions, impact statement, future directions"
+                "length": "200-300 words",
+                "structure": "Summary, Key Contributions, Impact",
+                "requirements": "Concise summary, clear contributions, impact statement"
             },
             "Future Work": {
-                "length": "600-800 words",
-                "structure": "Immediate Extensions, Long-term Directions, Research Opportunities",
-                "requirements": "Specific future research directions, potential improvements, opportunities"
+                "length": "200-300 words",
+                "structure": "Immediate Extensions, Long-term Directions",
+                "requirements": "Specific future research directions, potential improvements"
             }
         }
         
         return requirements.get(section_name, {
-            "length": "800-1200 words",
+            "length": "300-500 words",
             "structure": "Introduction, Main Content, Analysis, Summary",
             "requirements": "Well-structured technical content with proper analysis"
         })
@@ -207,6 +225,136 @@ Write the {section_name} section now:
         
         return prompt
     
+    def generate_multiple_sections_content(
+        self,
+        section_names: List[str],
+        paper_title: str,
+        domain: str,
+        context: str,
+        paper_info: Dict
+    ) -> Dict[str, str]:
+        """Generate content for multiple sections in a single API call"""
+        
+        # Create combined prompt for multiple sections
+        sections_info = []
+        for section_name in section_names:
+            requirements = self.get_section_requirements(section_name)
+            sections_info.append(f"""
+SECTION: {section_name}
+- Target Length: {requirements['length']}
+- Structure: {requirements['structure']}
+- Requirements: {requirements['requirements']}
+""")
+        
+        prompt = f"""
+You are a world-class academic researcher writing a comprehensive IEEE research paper.
+
+PAPER INFORMATION:
+- Title: {paper_title}
+- Domain: {domain}
+- Authors: {', '.join(paper_info.get('authors', []))}
+- Keywords: {', '.join(paper_info.get('keywords', []))}
+
+CONTEXT FROM REFERENCE PAPERS:
+{context[:2000]}...
+
+TASK: Generate content for the following sections in a single response. 
+Separate each section with "=== SECTION: [Section Name] ===" markers.
+
+SECTIONS TO GENERATE:
+{''.join(sections_info)}
+
+WRITING GUIDELINES:
+1. CONCISE CONTENT: Keep within the specified word limits for each section
+2. IEEE STANDARDS: Follow IEEE formatting and citation style
+3. ACADEMIC RIGOR: Use formal academic language
+4. LOGICAL FLOW: Ensure smooth transitions within each section
+5. EVIDENCE-BASED: Support claims with evidence from context
+6. PUBLICATION QUALITY: Write at the level expected for IEEE venues
+
+IMPORTANT: 
+- Start each section with "=== SECTION: [Section Name] ==="
+- Keep content concise but comprehensive
+- Ensure each section meets its specific requirements
+- Total response should be efficient to avoid rate limits
+
+Generate the sections now:
+"""
+        
+        max_retries = 3
+        retry_delay = 30
+        
+        for attempt in range(max_retries):
+            try:
+                print(f"Generating {len(section_names)} sections together (attempt {attempt + 1}/{max_retries})...")
+                
+                response = self.model.generate_content(
+                    prompt,
+                    generation_config=genai.types.GenerationConfig(
+                        max_output_tokens=4000,  # Reduced for multiple sections
+                        temperature=settings.temperature,
+                    )
+                )
+                
+                content = response.text
+                
+                # Parse the response to extract individual sections
+                sections = self._parse_multiple_sections(content, section_names)
+                
+                return sections
+                
+            except Exception as e:
+                error_msg = str(e)
+                print(f"Attempt {attempt + 1} failed for multiple sections: {error_msg}")
+                
+                if any(keyword in error_msg.lower() for keyword in ["429", "quota", "rate", "limit"]):
+                    if attempt < max_retries - 1:
+                        print(f"Rate/quota limit hit. Waiting {retry_delay} seconds before retry...")
+                        import time
+                        time.sleep(retry_delay)
+                        retry_delay *= 2
+                        continue
+                
+                if attempt == max_retries - 1:
+                    raise Exception(f"Multi-section generation failed after {max_retries} attempts: {error_msg}")
+        
+        raise Exception(f"Multi-section generation failed for {section_names}")
+    
+    def _parse_multiple_sections(self, content: str, section_names: List[str]) -> Dict[str, str]:
+        """Parse the multi-section response into individual sections"""
+        sections = {}
+        
+        # Split by section markers
+        parts = content.split("=== SECTION:")
+        
+        for part in parts[1:]:  # Skip first empty part
+            lines = part.strip().split('\n')
+            if not lines:
+                continue
+                
+            # Extract section name from first line
+            section_line = lines[0].strip()
+            section_name = section_line.replace("===", "").strip()
+            
+            # Find matching section name
+            matched_section = None
+            for expected_section in section_names:
+                if expected_section.lower() in section_name.lower():
+                    matched_section = expected_section
+                    break
+            
+            if matched_section:
+                # Extract content (skip the section header line)
+                section_content = '\n'.join(lines[1:]).strip()
+                section_content = self.post_process_content(section_content, matched_section)
+                sections[matched_section] = section_content
+        
+        # If parsing failed, fall back to single section generation
+        if len(sections) < len(section_names):
+            print(f"⚠️  Multi-section parsing incomplete. Got {len(sections)}/{len(section_names)} sections")
+        
+        return sections
+
     def generate_section_content(
         self,
         section_name: str,
@@ -215,30 +363,53 @@ Write the {section_name} section now:
         context: str,
         paper_info: Dict
     ) -> str:
-        """Generate comprehensive content for a specific section"""
+        """Generate comprehensive content for a specific section with rate limiting"""
         
         prompt = self.generate_comprehensive_prompt(
             section_name, paper_title, domain, context, paper_info
         )
         
-        try:
-            response = self.model.generate_content(
-                prompt,
-                generation_config=genai.types.GenerationConfig(
-                    max_output_tokens=settings.max_tokens,
-                    temperature=settings.temperature,
+        max_retries = 3
+        retry_delay = 30  # Start with 30 seconds for rate limits
+        
+        for attempt in range(max_retries):
+            try:
+                print(f"Generating {section_name} (attempt {attempt + 1}/{max_retries})...")
+                
+                response = self.model.generate_content(
+                    prompt,
+                    generation_config=genai.types.GenerationConfig(
+                        max_output_tokens=2000,  # Reduced from settings.max_tokens
+                        temperature=settings.temperature,
+                    )
                 )
-            )
-            
-            content = response.text
-            
-            # Post-process content
-            content = self.post_process_content(content, section_name)
-            
-            return content
-            
-        except Exception as e:
-            raise Exception(f"Content generation failed: {str(e)}")
+                
+                content = response.text
+                
+                # Post-process content
+                content = self.post_process_content(content, section_name)
+                
+                return content
+                
+            except Exception as e:
+                error_msg = str(e)
+                print(f"Attempt {attempt + 1} failed for {section_name}: {error_msg}")
+                
+                # Check if it's a rate limit or quota error
+                if any(keyword in error_msg.lower() for keyword in ["429", "quota", "rate", "limit"]):
+                    if attempt < max_retries - 1:
+                        print(f"Rate/quota limit hit. Waiting {retry_delay} seconds before retry...")
+                        import time
+                        time.sleep(retry_delay)
+                        retry_delay *= 2  # Exponential backoff: 10, 20, 40 seconds
+                        continue
+                
+                # If it's the last attempt or not a rate limit error, raise the exception
+                if attempt == max_retries - 1:
+                    raise Exception(f"Content generation failed after {max_retries} attempts: {error_msg}")
+        
+        # This should never be reached, but just in case
+        raise Exception(f"Content generation failed for {section_name}")
     
     def post_process_content(self, content: str, section_name: str) -> str:
         """Post-process generated content for quality and formatting"""

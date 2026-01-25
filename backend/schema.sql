@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS papers (
     affiliations JSONB,
     keywords JSONB,
     status TEXT DEFAULT 'draft',
+    metadata JSONB,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -21,6 +22,7 @@ CREATE TABLE IF NOT EXISTS sections (
     section_name TEXT NOT NULL,
     content TEXT,
     order_index INTEGER,
+    metadata JSONB,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
