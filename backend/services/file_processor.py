@@ -2,8 +2,8 @@ import os
 from pathlib import Path
 import PyPDF2
 from docx import Document
-from typing import List, Tuple
-import google.generativeai as genai
+from typing import List, Tuple, Optional
+import google.genai as genai
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from sentence_transformers import SentenceTransformer
 import numpy as np
@@ -15,8 +15,17 @@ class FileProcessor:
     """Process uploaded PDF and DOCX files"""
     
     def __init__(self):
-        # Initialize the sentence transformer model
-        self.embedding_model = SentenceTransformer(settings.embedding_model)
+        # Use lazy loading for the embedding model to speed up startup
+        self._embedding_model: Optional[SentenceTransformer] = None
+    
+    @property
+    def embedding_model(self) -> SentenceTransformer:
+        """Lazy load the embedding model only when needed"""
+        if self._embedding_model is None:
+            print("🔄 Loading embedding model (first time only)...")
+            self._embedding_model = SentenceTransformer(settings.embedding_model)
+            print("✅ Embedding model loaded successfully")
+        return self._embedding_model
     
     @staticmethod
     def extract_text_from_pdf(file_path: str) -> str:

@@ -17,7 +17,7 @@ def check_requirements():
         import fastapi
         import uvicorn
         import supabase
-        import google.generativeai
+        import google.genai
         import PyPDF2
         import docx
         import langchain

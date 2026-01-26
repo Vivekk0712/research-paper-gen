@@ -9,9 +9,11 @@ langchain-community
 PyPDF2
 python-docx
 supabase
-google-generativeai
+google-genai
 python-dotenv
 sentence-transformers
 torch
 numpy
 jinja2
+pdflatex
+

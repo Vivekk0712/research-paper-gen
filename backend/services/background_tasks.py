@@ -4,7 +4,7 @@ Background task service for long-running operations
 
 import asyncio
 import threading
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from services.content_generator import ComprehensiveContentGenerator
 from services.file_processor import FileProcessor
 from supabase import create_client
@@ -16,8 +16,25 @@ supabase = create_client(settings.supabase_url, settings.supabase_key)
 class BackgroundTaskManager:
     def __init__(self):
         self.tasks = {}
-        self.content_generator = ComprehensiveContentGenerator()
-        self.file_processor = FileProcessor()
+        # Use lazy loading for heavy services
+        self._content_generator: Optional[ComprehensiveContentGenerator] = None
+        self._file_processor: Optional[FileProcessor] = None
+    
+    @property
+    def content_generator(self) -> ComprehensiveContentGenerator:
+        """Lazy load content generator only when needed"""
+        if self._content_generator is None:
+            print("🔄 Initializing content generator...")
+            self._content_generator = ComprehensiveContentGenerator()
+        return self._content_generator
+    
+    @property
+    def file_processor(self) -> FileProcessor:
+        """Lazy load file processor only when needed"""
+        if self._file_processor is None:
+            print("🔄 Initializing file processor...")
+            self._file_processor = FileProcessor()
+        return self._file_processor
     
     def start_paper_generation(self, paper_id: str) -> str:
         """Start background paper generation task"""

@@ -5,15 +5,21 @@ export const APP_CONFIG = {
   allowedFileTypes: import.meta.env.VITE_ALLOWED_FILE_TYPES?.split(',') || ['.pdf', '.docx'],
 };
 
-// IEEE Paper sections
+// IEEE Paper sections - Complete list
 export const IEEE_SECTIONS = [
   'Abstract',
   'Introduction',
+  'Related Work',
   'Literature Review',
   'Methodology',
+  'System Design',
+  'Implementation',
+  'Experimental Setup',
   'Results',
+  'Evaluation',
   'Discussion',
   'Conclusion',
+  'Future Work',
   'References',
 ];
 

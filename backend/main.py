@@ -7,7 +7,7 @@ import uuid
 import shutil
 from pathlib import Path
 from typing import List
-import google.generativeai as genai
+import google.genai as genai
 import tempfile
 
 from models import (
@@ -16,17 +16,24 @@ from models import (
 )
 from database import supabase
 from services.file_processor import FileProcessor
-from services.latex_service import latex_service
+from services.latex_service_v2 import latex_service
 from services.background_tasks import background_task_manager
 
 from config import get_settings
 
 settings = get_settings()
-genai.configure(api_key=settings.gemini_api_key)
 
-# Initialize services
-file_processor = FileProcessor()
+# Initialize services with lazy loading
+_file_processor = None
 content_generator = background_task_manager.content_generator
+
+def get_file_processor():
+    """Get file processor instance with lazy loading"""
+    global _file_processor
+    if _file_processor is None:
+        print("🔄 Initializing file processor...")
+        _file_processor = FileProcessor()
+    return _file_processor
 
 app = FastAPI(title="IEEE Paper Generator API")
 
@@ -172,7 +179,7 @@ async def upload_files(paper_id: str, files: List[UploadFile] = File(...)):
 async def process_files_background(paper_id: str, uploaded_files: List[FileUploadResponse]):
     """Process files in background to avoid timeout"""
     try:
-        file_processor = FileProcessor()
+        file_processor = get_file_processor()
         
         for file_info in uploaded_files:
             # Process file and extract text
@@ -241,7 +248,7 @@ async def generate_content(request: GenerationRequest):
         
         # Generate query embedding
         query = f"{request.section_name} {paper['title']} {paper['domain']}"
-        file_processor = FileProcessor()
+        file_processor = get_file_processor()
         query_embedding = file_processor.generate_embeddings(query)
         
         # Retrieve relevant chunks using vector similarity
@@ -367,13 +374,13 @@ async def export_paper_latex(paper_id: str):
 
 @app.get("/api/papers/{paper_id}/export/pdf")
 async def export_paper_pdf(paper_id: str):
-    """Export paper as IEEE-formatted PDF"""
+    """Export paper as IEEE-formatted PDF using LaTeX/MiKTeX"""
     try:
         # Check if LaTeX is available
         if not latex_service.is_latex_available():
             raise HTTPException(
                 status_code=503, 
-                detail="LaTeX not available on server. Please install TeX Live or MiKTeX."
+                detail="LaTeX not available. Please install MiKTeX from https://miktex.org/"
             )
         
         # Get paper info
@@ -426,7 +433,7 @@ async def export_paper_pdf(paper_id: str):
         
     except Exception as e:
         print(f"PDF export error: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
 
 @app.post("/api/papers/{paper_id}/resume-generation")
 async def resume_paper_generation(paper_id: str):

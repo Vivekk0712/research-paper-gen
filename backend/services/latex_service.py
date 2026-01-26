@@ -13,7 +13,7 @@ class IEEEPaperGenerator:
         self.ieee_template = self._get_ieee_template()
     
     def _get_ieee_template(self) -> str:
-        """Simplified IEEE paper LaTeX template to avoid formatting issues"""
+        """Improved IEEE paper LaTeX template with better formatting"""
         return r"""
 \documentclass[conference]{IEEEtran}
 \IEEEoverridecommandlockouts
@@ -29,17 +29,26 @@ class IEEEPaperGenerator:
 \hyphenation{op-tical net-works semi-conduc-tor}
 
 % Document metadata
-\title{ {{ title }} }
+\title{\textbf{ {{ title }} }}
 
 \author{
-{% for author in authors %}
-\IEEEauthorblockN{ {{ author.name }} }
-\IEEEauthorblockA{
-{% if author.affiliation %}{{ author.affiliation }}{% endif %}
-{% if author.email %}\\Email: {{ author.email }}{% endif %}
-}
-{% if not loop.last %}\and{% endif %}
-{% endfor %}
+{% if authors|length == 1 %}
+\IEEEauthorblockN{\textbf{ {{ authors[0].name }} }}
+\IEEEauthorblockA{\textbf{ {% if authors[0].affiliation %}{{ authors[0].affiliation }}{% endif %} }\\
+{% if authors[0].email %}Email: {{ authors[0].email }}{% endif %}}
+{% elif authors|length == 2 %}
+\IEEEauthorblockN{\textbf{ {{ authors[0].name }} }}
+\IEEEauthorblockA{\textbf{ {% if authors[0].affiliation %}{{ authors[0].affiliation }}{% endif %} }\\
+{% if authors[0].email %}Email: {{ authors[0].email }}{% endif %}}
+\and
+\IEEEauthorblockN{\textbf{ {{ authors[1].name }} }}
+\IEEEauthorblockA{\textbf{ {% if authors[1].affiliation %}{{ authors[1].affiliation }}{% endif %} }\\
+{% if authors[1].email %}Email: {{ authors[1].email }}{% endif %}}
+{% elif authors|length >= 3 %}
+\IEEEauthorblockN{\textbf{ {{ authors[0].name }} }, \textbf{ {{ authors[1].name }} }, \textbf{ {{ authors[2].name }} }}
+\IEEEauthorblockA{\textbf{ {% if authors[0].affiliation %}{{ authors[0].affiliation }}{% endif %} }\\
+Email: {% if authors[0].email %}{{ authors[0].email }}{% endif %}{% if authors[1].email %}, {{ authors[1].email }}{% endif %}{% if authors[2].email %}, {{ authors[2].email }}{% endif %}}
+{% endif %}
 }
 
 \begin{document}
@@ -122,26 +131,82 @@ The authors would like to thank the anonymous reviewers for their valuable comme
         if not content:
             return ""
         
-        # AGGRESSIVE cleaning - remove all problematic content
-        content = self._clean_problematic_patterns(content)
+        # STEP 1: Remove all problematic technical content that breaks LaTeX
+        content = self._remove_problematic_content(content)
         
-        # Convert simple markdown to LaTeX
+        # STEP 2: Convert basic markdown to LaTeX
         content = self._convert_markdown_to_latex(content)
         
-        # Very conservative character escaping
-        content = self._escape_latex_chars_conservative(content)
-        
-        # Handle only simple lists
+        # STEP 3: Handle simple lists
         content = self._handle_simple_lists(content)
         
-        # Clean paragraphs
+        # STEP 4: Clean up paragraphs
         content = self._handle_paragraphs(content)
+        
+        # STEP 5: Final cleanup
+        content = self._final_cleanup(content)
+        
+        return content
+    
+    def _remove_problematic_content(self, content: str) -> str:
+        """Remove content that commonly breaks LaTeX compilation"""
+        # Remove code blocks and pseudocode
+        content = re.sub(r'```[^`]*```', '', content, flags=re.DOTALL)
+        content = re.sub(r'`[^`]+`', '', content)
+        
+        # Remove mathematical expressions and formulas
+        content = re.sub(r'[^a-zA-Z\s]*=\s*[^a-zA-Z\s]*\([^)]*\)[^a-zA-Z\s]*', '', content)
+        content = re.sub(r'angle\s*=\s*atan2[^.]*', '', content)
+        content = re.sub(r'delta_[a-zA-Z]+', '', content)
+        content = re.sub(r'sqrt\([^)]*\)', '', content)
+        content = re.sub(r'[A-Z]_[a-zA-Z0-9_]+', '', content)  # Remove variable names like F_aligned
+        
+        # Remove technical specifications that cause issues
+        content = re.sub(r'[0-9]+\s*GB\s*RAM', '8GB RAM', content)
+        content = re.sub(r'NVIDIA\s+[A-Z0-9\s]+', 'NVIDIA GPU', content)
+        content = re.sub(r'Intel\s+[A-Z0-9\s]+', 'Intel Processor', content)
+        
+        # Remove complex technical terms that break formatting
+        content = re.sub(r'[A-Z][a-z]*[A-Z][a-zA-Z]*\([^)]*\)', '', content)  # Function calls
+        content = re.sub(r'\b[a-z_]+\.[a-z_]+\b', '', content)  # Module references
+        
+        # Remove lines with too many special characters
+        lines = content.split('\n')
+        clean_lines = []
+        for line in lines:
+            # Skip lines with too many special characters or technical syntax
+            special_char_count = len(re.findall(r'[{}()[\]_^$\\]', line))
+            if special_char_count > 5:  # Skip lines with many special chars
+                continue
+            if any(pattern in line for pattern in [
+                'pseudocode', 'algorithm', 'function', 'return', 'input:', 'output:', 
+                'bbox', 'landmarks', 'embedding', 'threshold', 'similarity'
+            ]):
+                continue
+            clean_lines.append(line)
+        
+        content = '\n'.join(clean_lines)
+        return content
+    
+    def _final_cleanup(self, content: str) -> str:
+        """Final cleanup to ensure LaTeX compatibility"""
+        # Remove any remaining problematic characters
+        content = re.sub(r'[{}$^_~\\](?![a-zA-Z])', '', content)  # Remove standalone special chars
+        
+        # Fix common LaTeX issues
+        content = re.sub(r'&', r'\\&', content)  # Escape ampersands
+        content = re.sub(r'%', r'\\%', content)  # Escape percent signs
+        content = re.sub(r'#', r'\\#', content)  # Escape hash signs
+        
+        # Remove empty lines and excessive whitespace
+        content = re.sub(r'\n\s*\n\s*\n+', '\n\n', content)
+        content = re.sub(r'^\s+|\s+$', '', content, flags=re.MULTILINE)
         
         return content
     
     def _escape_latex_chars_conservative(self, content: str) -> str:
-        """Very conservative LaTeX character escaping"""
-        # Only escape the most essential characters
+        """Very conservative LaTeX character escaping - preserve LaTeX commands"""
+        # Only escape characters that aren't part of LaTeX commands
         escapes = {
             '&': r'\&',
             '%': r'\%',
@@ -149,40 +214,50 @@ The authors would like to thank the anonymous reviewers for their valuable comme
         }
         
         for char, escape in escapes.items():
-            content = content.replace(char, escape)
-        
-        # Remove any remaining problematic characters
-        content = re.sub(r'[{}$^_~\\]', '', content)
+            # Don't escape if it's already part of a LaTeX command
+            content = re.sub(f'(?<!\\\\){re.escape(char)}', escape, content)
         
         return content
     
     def _handle_simple_lists(self, content: str) -> str:
-        """Handle only very simple lists"""
+        """Handle only very simple lists - ultra conservative approach"""
         lines = content.split('\n')
         result = []
         in_list = False
         
         for line in lines:
             stripped = line.strip()
-            # Only handle the simplest bullet points
-            if stripped.startswith('- ') and len(stripped) < 100:  # Short lines only
+            
+            # Skip lines that are already LaTeX commands or contain special chars
+            if (stripped.startswith('\\') or 
+                any(char in stripped for char in ['{', '}', '$', '^', '_', '='])):
+                if in_list:
+                    result.append('\\end{itemize}')
+                    in_list = False
+                result.append(line)
+                continue
+            
+            # Only handle the simplest bullet points (short, clean text)
+            if (stripped.startswith('- ') and 
+                len(stripped) < 100 and
+                stripped.count('(') == stripped.count(')') and  # Balanced parentheses
+                not any(word in stripped.lower() for word in [
+                    'algorithm', 'function', 'input', 'output', 'return', 'embedding'
+                ])):
                 if not in_list:
                     result.append('\\begin{itemize}')
                     in_list = True
                 item_text = stripped[2:].strip()
-                # Clean the item text completely
-                item_text = re.sub(r'[^a-zA-Z0-9\s\.,;:!?()-]', '', item_text)
-                if item_text:  # Only add if there's content left
+                # Only add if it's simple text
+                if len(item_text) > 0 and len(item_text) < 80:
                     result.append(f'\\item {item_text}')
             else:
                 if in_list:
                     result.append('\\end{itemize}')
                     in_list = False
-                if stripped and len(stripped) < 200:  # Only short paragraphs
-                    # Clean the line completely
-                    clean_line = re.sub(r'[^a-zA-Z0-9\s\.,;:!?()-]', '', stripped)
-                    if clean_line:
-                        result.append(clean_line)
+                # Only add non-empty, simple lines
+                if stripped and len(stripped) < 200:
+                    result.append(line)
         
         if in_list:
             result.append('\\end{itemize}')
@@ -236,16 +311,41 @@ The authors would like to thank the anonymous reviewers for their valuable comme
         return content
     
     def _convert_markdown_to_latex(self, content: str) -> str:
-        """Convert markdown-style formatting to LaTeX"""
-        # Convert **bold** to \textbf{bold}
-        content = re.sub(r'\*\*([^*]+)\*\*', r'\\textbf{\1}', content)
+        """Convert markdown-style formatting to LaTeX - simplified and safe"""
+        # Only handle the most basic markdown conversions
         
-        # Convert *italic* to \textit{italic}
-        content = re.sub(r'\*([^*]+)\*', r'\\textit{\1}', content)
+        # Convert **bold** to \textbf{bold} - but only simple cases
+        content = re.sub(r'\*\*([a-zA-Z0-9\s,.:;!?-]+)\*\*', r'\\textbf{\1}', content)
         
-        # Convert headers (but be careful with existing LaTeX commands)
-        content = re.sub(r'^#{1,3}\s*(.+)$', r'\\textbf{\1}', content, flags=re.MULTILINE)
+        # Convert *italic* to \textit{italic} - but only simple cases  
+        content = re.sub(r'\*([a-zA-Z0-9\s,.:;!?-]+)\*', r'\\textit{\1}', content)
         
+        # Handle simple headings - only convert obvious headings
+        lines = content.split('\n')
+        processed_lines = []
+        
+        for line in lines:
+            stripped = line.strip()
+            
+            # Skip if already a LaTeX command
+            if stripped.startswith('\\'):
+                processed_lines.append(line)
+                continue
+            
+            # Only convert very obvious headings (short lines with key words)
+            if (len(stripped) < 50 and 
+                stripped and 
+                any(word in stripped.lower() for word in [
+                    'introduction', 'methodology', 'results', 'conclusion',
+                    'background', 'implementation', 'evaluation', 'discussion'
+                ]) and
+                not any(char in stripped for char in ['(', ')', '=', '_', '{', '}'])):
+                # Make it a simple subsection
+                processed_lines.append(f'\\subsection{{{stripped}}}')
+            else:
+                processed_lines.append(line)
+        
+        content = '\n'.join(processed_lines)
         return content
     
     def _escape_latex_chars(self, content: str) -> str:
@@ -318,10 +418,48 @@ The authors would like to thank the anonymous reviewers for their valuable comme
         return '\n'.join(result)
     
     def _handle_paragraphs(self, content: str) -> str:
-        """Handle paragraph breaks properly"""
+        """Handle paragraph breaks and formatting properly"""
         # Replace multiple newlines with proper paragraph breaks
-        content = re.sub(r'\n\s*\n', '\n\n', content)
-        return content
+        content = re.sub(r'\n\s*\n\s*\n+', '\n\n', content)
+        
+        # Ensure proper spacing after LaTeX commands
+        content = re.sub(r'(\\(?:sub)*section\{[^}]+\})\n*', r'\1\n\n', content)
+        content = re.sub(r'(\\textbf\{[^}]+\})\n*', r'\1\n\n', content)
+        
+        # Clean up excessive whitespace
+        content = re.sub(r'[ \t]+', ' ', content)  # Multiple spaces to single space
+        content = re.sub(r'\n[ \t]+', '\n', content)  # Remove leading whitespace on lines
+        
+        # Ensure paragraphs are properly separated
+        lines = content.split('\n')
+        processed_lines = []
+        
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            
+            # Skip empty lines
+            if not stripped:
+                if processed_lines and processed_lines[-1] != '':
+                    processed_lines.append('')
+                continue
+            
+            # Add the line
+            processed_lines.append(stripped)
+            
+            # Add extra spacing after headings and important elements
+            if (stripped.startswith('\\subsection') or 
+                stripped.startswith('\\subsubsection') or
+                stripped.startswith('\\textbf') or
+                stripped.endswith('\\end{itemize}') or
+                stripped.endswith('\\end{enumerate}')):
+                if i < len(lines) - 1 and lines[i + 1].strip():
+                    processed_lines.append('')
+        
+        # Final cleanup - ensure no triple newlines
+        result = '\n'.join(processed_lines)
+        result = re.sub(r'\n\n\n+', '\n\n', result)
+        
+        return result
     
     def compile_latex_to_pdf(self, latex_content: str, output_dir: str = None) -> tuple[str, str]:
         """Compile LaTeX content to PDF using system pdflatex"""

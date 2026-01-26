@@ -26,7 +26,7 @@ const PaperWizard = ({ onBack, existingPaper }) => {
   
   const [uploadedFiles, setUploadedFiles] = useState([])
   const [generatedSections, setGeneratedSections] = useState({})
-  const [selectedSections, setSelectedSections] = useState(['Abstract', 'Introduction', 'Literature Review'])
+  const [selectedSections, setSelectedSections] = useState([])
   const [paperId, setPaperId] = useState(existingPaper?.paper_id || null)
   const [processingStatus, setProcessingStatus] = useState(null)
   const [generationProgress, setGenerationProgress] = useState({
@@ -58,10 +58,24 @@ const PaperWizard = ({ onBack, existingPaper }) => {
           // Load existing sections
           const sections = await apiService.getSections(existingPaper.paper_id)
           const sectionsMap = {}
+          const sectionNames = []
           sections.forEach(section => {
             sectionsMap[section.section_name] = section
+            sectionNames.push(section.section_name)
           })
           setGeneratedSections(sectionsMap)
+          
+          // Load selected sections from localStorage or use generated sections
+          const savedSelections = localStorage.getItem(`selectedSections_${existingPaper.paper_id}`)
+          if (savedSelections) {
+            setSelectedSections(JSON.parse(savedSelections))
+          } else if (sectionNames.length > 0) {
+            // If we have generated sections, use those as selected
+            setSelectedSections(sectionNames)
+          } else {
+            // Default to common sections
+            setSelectedSections(['Abstract', 'Introduction', 'Methodology'])
+          }
           
           // Load processing status
           if (files.length > 0) {
@@ -85,7 +99,12 @@ const PaperWizard = ({ onBack, existingPaper }) => {
           console.error('Failed to load existing paper data:', error)
           // If loading fails, start from step 2
           setCurrentStep(2)
+          // Set default selections
+          setSelectedSections(['Abstract', 'Introduction', 'Methodology'])
         }
+      } else {
+        // New paper - set default selections
+        setSelectedSections(['Abstract', 'Introduction', 'Methodology'])
       }
     }
     
@@ -424,6 +443,10 @@ const PaperWizard = ({ onBack, existingPaper }) => {
       if (selectedSections.length === 0) {
         setError('Please select at least one section to generate')
         return
+      }
+      // Save selected sections to localStorage
+      if (paperId) {
+        localStorage.setItem(`selectedSections_${paperId}`, JSON.stringify(selectedSections))
       }
       setCurrentStep(4)
     }

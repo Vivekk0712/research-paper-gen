@@ -1,4 +1,4 @@
-import google.generativeai as genai
+import google.genai as genai
 from typing import Dict, List, Optional
 from config import get_settings
 import re
@@ -10,16 +10,17 @@ class ComprehensiveContentGenerator:
     """Generate comprehensive, high-quality IEEE paper content"""
     
     def __init__(self):
-        genai.configure(api_key=settings.gemini_api_key)
-        self.model = genai.GenerativeModel('gemini-2.5-flash')  # Using stable free model
+        self.client = genai.Client(api_key=settings.gemini_api_key)
+        self.model = 'gemini-2.5-flash'  # Using the latest model
         print("✅ Initialized ContentGenerator with gemini-2.5-flash")
     
     def test_api_connection(self) -> bool:
         """Test if API is working and has quota available"""
         try:
-            response = self.model.generate_content(
-                "Test message. Respond with 'API working'.",
-                generation_config=genai.types.GenerationConfig(
+            response = self.client.models.generate_content(
+                model=self.model,
+                contents="Test message. Respond with 'API working'.",
+                config=genai.GenerateContentConfig(
                     max_output_tokens=10,
                     temperature=0.1,
                 )
@@ -288,9 +289,10 @@ Generate the sections now:
             try:
                 print(f"Generating {len(section_names)} sections together (attempt {attempt + 1}/{max_retries})...")
                 
-                response = self.model.generate_content(
-                    prompt,
-                    generation_config=genai.types.GenerationConfig(
+                response = self.client.models.generate_content(
+                    model=self.model,
+                    contents=prompt,
+                    config=genai.GenerateContentConfig(
                         max_output_tokens=4000,  # Reduced for multiple sections
                         temperature=settings.temperature,
                     )
@@ -376,9 +378,10 @@ Generate the sections now:
             try:
                 print(f"Generating {section_name} (attempt {attempt + 1}/{max_retries})...")
                 
-                response = self.model.generate_content(
-                    prompt,
-                    generation_config=genai.types.GenerationConfig(
+                response = self.client.models.generate_content(
+                    model=self.model,
+                    contents=prompt,
+                    config=genai.GenerateContentConfig(
                         max_output_tokens=2000,  # Reduced from settings.max_tokens
                         temperature=settings.temperature,
                     )
@@ -468,9 +471,10 @@ Generate the references:
 """
         
         try:
-            response = self.model.generate_content(
-                prompt,
-                generation_config=genai.types.GenerationConfig(
+            response = self.client.models.generate_content(
+                model=self.model,
+                contents=prompt,
+                config=genai.GenerateContentConfig(
                     max_output_tokens=2000,
                     temperature=0.8,
                 )
