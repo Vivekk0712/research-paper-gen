@@ -17,22 +17,66 @@ function App() {
   const [connectionStatus, setConnectionStatus] = useState('checking')
   const [isLoading, setIsLoading] = useState(true)
   const [selectedPaper, setSelectedPaper] = useState(null)
+  const [embeddingModelReady, setEmbeddingModelReady] = useState(false)
 
   useEffect(() => {
-    const testConnection = async () => {
+    const initializeApp = async () => {
       try {
-        const results = await logConnectionStatus()
-        setConnectionStatus(results.connection.success ? 'connected' : 'disconnected')
+        // Quick connection test
+        const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}/`)
+        
+        if (response.ok) {
+          setConnectionStatus('connected')
+          console.log('✅ Backend connected')
+          
+          // Check embedding model status in background (non-blocking)
+          fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}/api/system/status`)
+            .then(res => res.json())
+            .then(data => {
+              if (data.embedding_model_ready) {
+                setEmbeddingModelReady(true)
+                console.log('✅ Embedding model is ready!')
+              }
+            })
+            .catch(() => {
+              // Silently fail, will poll later
+            })
+        } else {
+          setConnectionStatus('disconnected')
+        }
       } catch (error) {
         console.error('Connection test failed:', error)
         setConnectionStatus('disconnected')
       } finally {
-        setTimeout(() => setIsLoading(false), 1000) // Smooth loading transition
+        // Show UI after connection check completes
+        setIsLoading(false)
       }
     }
 
-    testConnection()
-  }, [])
+    // Start initialization
+    initializeApp()
+    
+    // Poll for embedding model readiness if not ready yet (non-blocking)
+    const pollInterval = setInterval(async () => {
+      if (!embeddingModelReady) {
+        try {
+          const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}/api/system/status`)
+          const data = await response.json()
+          if (data.embedding_model_ready) {
+            setEmbeddingModelReady(true)
+            console.log('✅ Embedding model is now ready!')
+            clearInterval(pollInterval)
+          }
+        } catch (error) {
+          // Silently fail, will retry
+        }
+      } else {
+        clearInterval(pollInterval)
+      }
+    }, 2000) // Check every 2 seconds
+    
+    return () => clearInterval(pollInterval)
+  }, [embeddingModelReady])
 
   const features = [
     {
@@ -66,19 +110,30 @@ function App() {
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
         <div className="text-center">
           <div className="relative">
-            <div className="w-20 h-20 border-4 border-purple-200 border-t-purple-500 rounded-full animate-spin mx-auto mb-4"></div>
-            <Sparkles className="w-8 h-8 text-purple-400 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" />
+            <div className="w-16 h-16 border-4 border-purple-200 border-t-purple-500 rounded-full animate-spin mx-auto mb-3"></div>
+            <Sparkles className="w-6 h-6 text-purple-400 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" />
           </div>
-          <h2 className="text-2xl font-bold text-white mb-2">Initializing AI Engine</h2>
-          <p className="text-purple-300">Preparing your research companion...</p>
+          <h2 className="text-xl font-bold text-white">Loading...</h2>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 relative overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 relative overflow-hidden transition-all duration-500">
       <AnimatedBackground />
+      
+      {/* Embedding Model Loading Banner (non-blocking, glassy transparent) */}
+      {!embeddingModelReady && connectionStatus === 'connected' && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-purple-500/20 backdrop-blur-md border-b border-purple-400/20 py-2 px-4 animate-fade-in">
+          <div className="container mx-auto flex items-center justify-center space-x-3">
+            <div className="w-4 h-4 border-2 border-purple-300 border-t-transparent rounded-full animate-spin"></div>
+            <span className="text-purple-100 text-sm font-medium drop-shadow-lg">
+              AI Engine initializing... (You can use the app now, generation will be ready in a moment)
+            </span>
+          </div>
+        </div>
+      )}
       
       {/* Navigation */}
       <nav className="relative z-10 bg-white/10 backdrop-blur-md border-b border-white/20">
@@ -94,13 +149,27 @@ function App() {
               </div>
             </div>
             
-            <StatusIndicator status={connectionStatus} />
+            <div className="flex items-center space-x-3">
+              {!embeddingModelReady && connectionStatus === 'connected' && (
+                <div className="flex items-center space-x-2 bg-yellow-500/20 backdrop-blur-sm border border-yellow-300/30 rounded-full px-3 py-1">
+                  <Brain className="w-4 h-4 text-yellow-400 animate-pulse" />
+                  <span className="text-yellow-300 text-xs font-medium">AI Loading...</span>
+                </div>
+              )}
+              {embeddingModelReady && connectionStatus === 'connected' && (
+                <div className="flex items-center space-x-2 bg-green-500/20 backdrop-blur-sm border border-green-300/30 rounded-full px-3 py-1">
+                  <Brain className="w-4 h-4 text-green-400" />
+                  <span className="text-green-300 text-xs font-medium">AI Ready</span>
+                </div>
+              )}
+              <StatusIndicator status={connectionStatus} />
+            </div>
           </div>
         </div>
       </nav>
 
       {currentView === 'home' && (
-        <div className="relative z-10">
+        <div className="relative z-10 animate-fade-in">
           {/* Hero Section */}
           <section className="container mx-auto px-6 py-20 text-center">
             <div className="max-w-4xl mx-auto">
@@ -240,7 +309,7 @@ function App() {
       )}
 
       {currentView === 'papers' && (
-        <div className="relative z-10 container mx-auto px-6 py-20">
+        <div className="relative z-10 container mx-auto px-6 py-20 animate-fade-in">
           <div className="max-w-6xl mx-auto">
             <PapersList 
               onSelectPaper={(paper) => {
@@ -257,10 +326,12 @@ function App() {
       )}
 
       {currentView === 'wizard' && (
-        <PaperWizard 
-          onBack={() => setCurrentView('home')} 
-          existingPaper={selectedPaper}
-        />
+        <div className="animate-fade-in">
+          <PaperWizard 
+            onBack={() => setCurrentView('home')} 
+            existingPaper={selectedPaper}
+          />
+        </div>
       )}
     </div>
   )

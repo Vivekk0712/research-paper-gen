@@ -27,6 +27,15 @@ class FileProcessor:
             print("✅ Embedding model loaded successfully")
         return self._embedding_model
     
+    def is_model_loaded(self) -> bool:
+        """Check if embedding model is already loaded"""
+        return self._embedding_model is not None
+    
+    def preload_model(self):
+        """Explicitly preload the embedding model"""
+        _ = self.embedding_model  # Access property to trigger loading
+        return self.is_model_loaded()
+    
     @staticmethod
     def extract_text_from_pdf(file_path: str) -> str:
         """Extract text from PDF file"""

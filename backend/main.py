@@ -25,6 +25,7 @@ settings = get_settings()
 
 # Initialize services with lazy loading
 _file_processor = None
+_embedding_model_ready = False
 content_generator = background_task_manager.content_generator
 
 def get_file_processor():
@@ -36,6 +37,41 @@ def get_file_processor():
     return _file_processor
 
 app = FastAPI(title="IEEE Paper Generator API")
+
+@app.on_event("startup")
+async def startup_event():
+    """Preload embedding model in background on startup"""
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+    
+    async def preload_embedding_model():
+        """Load embedding model in background using thread pool"""
+        global _embedding_model_ready
+        try:
+            print("🚀 Starting background preload of embedding model...")
+            
+            # Run the blocking model load in a thread pool to avoid blocking the event loop
+            loop = asyncio.get_event_loop()
+            executor = ThreadPoolExecutor(max_workers=1)
+            
+            def load_model():
+                file_processor = get_file_processor()
+                _ = file_processor.embedding_model
+                return True
+            
+            # Run in thread pool so it doesn't block the event loop
+            await loop.run_in_executor(executor, load_model)
+            
+            _embedding_model_ready = True
+            print("✅ Embedding model preloaded and ready!")
+        except Exception as e:
+            print(f"⚠️  Warning: Could not preload embedding model: {e}")
+            print("   Model will load on first use instead.")
+    
+    # Start preloading in background (non-blocking)
+    asyncio.create_task(preload_embedding_model())
+    print("🌐 Backend API is ready to accept requests")
+    print("📊 Embedding model loading in background...")
 
 app.add_middleware(
     CORSMiddleware,
@@ -60,8 +96,19 @@ async def root():
             "file_upload": True,
             "latex_export": True,
             "pdf_export": latex_service.is_latex_available(),
-            "background_tasks": True
+            "background_tasks": True,
+            "embedding_model_ready": _embedding_model_ready
         }
+    }
+
+@app.get("/api/system/status")
+async def system_status():
+    """Get detailed system status including model readiness"""
+    return {
+        "api_status": "running",
+        "embedding_model_ready": _embedding_model_ready,
+        "latex_available": latex_service.is_latex_available(),
+        "message": "Embedding model ready" if _embedding_model_ready else "Embedding model loading..."
     }
 
 @app.get("/api/papers", response_model=List[PaperResponse])
