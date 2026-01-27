@@ -125,7 +125,7 @@ function App() {
       
       {/* Embedding Model Loading Banner (non-blocking, glassy transparent) */}
       {!embeddingModelReady && connectionStatus === 'connected' && (
-        <div className="fixed top-0 left-0 right-0 z-50 bg-purple-500/20 backdrop-blur-md border-b border-purple-400/20 py-2 px-4 animate-fade-in">
+        <div className="fixed top-0 left-0 right-0 z-50 bg-purple-500/5 backdrop-blur-md border-b border-purple-400/5 py-2 px-4 animate-fade-in">
           <div className="container mx-auto flex items-center justify-center space-x-3">
             <div className="w-4 h-4 border-2 border-purple-300 border-t-transparent rounded-full animate-spin"></div>
             <span className="text-purple-100 text-sm font-medium drop-shadow-lg">
