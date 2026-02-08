@@ -11,8 +11,8 @@ class ComprehensiveContentGenerator:
     
     def __init__(self):
         self.client = genai.Client(api_key=settings.gemini_api_key)
-        self.model = 'gemini-2.5-flash'  # Using the latest model
-        print("✅ Initialized ContentGenerator with gemini-2.5-flash")
+        self.model = 'gemini-3-flash-preview'  # Using the latest model
+        print("✅ Initialized ContentGenerator with gemini-3-flash-preview")
     
     def test_api_connection(self) -> bool:
         """Test if API is working and has quota available"""

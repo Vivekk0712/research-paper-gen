@@ -31,6 +31,6 @@ python main.py
 ## Tech Stack
 
 - Frontend: React, Vite, Tailwind CSS
-- Backend: FastAPI, LangChain, Gemini 2.5 Flash
+- Backend: FastAPI, LangChain, Gemini 3
 - Database: Supabase (Postgres + pgvector)
 - Formatting: LaTeX (IEEEtran)

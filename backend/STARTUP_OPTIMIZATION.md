@@ -113,7 +113,7 @@ Press Ctrl+C to stop the server
 ========================================
 INFO:     Will watch for changes in these directories: ['C:\\Users\\Dell\\Research_Paper_Gen\\backend']
 🔄 Initializing content generator...
-✅ Initialized ContentGenerator with gemini-2.5-flash
+✅ Initialized ContentGenerator with gemini-3-flash-preview
 INFO:     Started server process [XXXX]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.

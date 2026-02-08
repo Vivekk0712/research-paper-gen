@@ -126,7 +126,7 @@ Instead of generating content from scratch (which leads to hallucinations), our 
 
 | Technology | Purpose | Details |
 |-----------|---------|---------|
-| **Google Gemini 2.5 Flash** | Large Language Model | Text generation for paper sections |
+| **Google Gemini 3 Flash** | Large Language Model | Text generation for paper sections |
 | **LangChain** | LLM orchestration | Framework for building LLM applications |
 | **Sentence Transformers** | Text embeddings | Converts text to vector embeddings |
 | **all-MiniLM-L6-v2** | Embedding model | 384-dimensional embeddings for semantic search |

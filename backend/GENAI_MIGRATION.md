@@ -29,9 +29,9 @@ Migrated to the new `google.genai` package for faster startup and better perform
 **File:** `backend/services/content_generator.py`
 ```diff
 - genai.configure(api_key=settings.gemini_api_key)
-- self.model = genai.GenerativeModel('gemini-2.5-flash')
+- self.model = genai.GenerativeModel('gemini-3-flash-preview')
 + self.client = genai.Client(api_key=settings.gemini_api_key)
-+ self.model = 'gemini-2.5-flash'
++ self.model = 'gemini-3-flash-preview'
 ```
 
 ### 4. API Call Updates
@@ -92,7 +92,7 @@ If you encounter issues:
 
 1. **Import errors:** Make sure you've installed `google-genai` and uninstalled `google-generativeai`
 2. **API errors:** Verify your `GEMINI_API_KEY` is still valid
-3. **Model errors:** The new package uses `gemini-2.0-flash-exp` instead of `gemini-2.5-flash`
+3. **Model errors:** The new package uses `gemini-3-flash-preview` instead of `gemini-2.5-flash`
 
 ## Benefits
 
